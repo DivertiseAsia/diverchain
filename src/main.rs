@@ -6,6 +6,40 @@ use std::io::BufReader;
 use std::io::prelude::*;
 
 
+fn main() {
+    let binding_addr = get_bind_addr();
+    let target_list = read_target_list_to_connect_to("config1.txt".to_string());
+
+    println!("Server {:?}", binding_addr);
+    println!("Target list: {:?}", target_list);
+
+    let listener = TcpListener::bind(binding_addr.to_string()).unwrap();
+
+    println!("Server is started");
+    println!("You can try to connect to the server using telnet");
+
+    let mut stream_list = Vec::<TcpStream>::new();
+
+    for stream in listener.incoming() {
+        let stream = stream.unwrap();
+        
+        println!("Connection established!");
+        handle_connection(&stream);
+        stream_list.push(stream);
+    }
+}
+
+fn handle_connection(mut stream: &TcpStream) {
+    let mut buffer = [0; 1024];
+    println!("We are inside the handle_connection function");
+
+    while stream.read(&mut buffer).unwrap() > 0{
+        println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
+    }
+
+    println!("Connection closed, ready for the next one");
+}
+
 fn get_bind_addr() -> String {
     let maybe_arg = env::args().nth(3);
     match maybe_arg {
@@ -26,35 +60,4 @@ fn read_target_list_to_connect_to(filename: String) -> Vec<String> {
         }
     }
     list
-}
-
-
-fn main() {
-    let binding_addr = get_bind_addr();
-    let target_list = read_target_list_to_connect_to("config1.txt".to_string());
-
-    println!("Server {:?}", binding_addr);
-    println!("Target list: {:?}", target_list);
-
-    let listener = TcpListener::bind(binding_addr.to_string()).unwrap();
-
-    println!("Server is started");
-    println!("You can try to connect to the server using telnet");
-
-    
-
-    for stream in listener.incoming() {
-        let stream = stream.unwrap();
-
-        println!("Connection established!");
-        handle_connection(stream);
-    }
-}
-
-fn handle_connection(mut stream: TcpStream) {
-    let mut buffer = [0; 1024];
-
-    stream.read(&mut buffer).unwrap();
-
-    println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
 }
