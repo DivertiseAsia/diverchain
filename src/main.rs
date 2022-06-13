@@ -4,6 +4,8 @@ use std::fs::File;
 use std::net::TcpListener;
 use std::io::BufReader;
 use std::io::prelude::*;
+use std::thread::JoinHandle;
+
 
 
 fn main() {
@@ -29,15 +31,18 @@ fn main() {
     }
 }
 
-fn handle_connection(mut stream: &TcpStream) {
+fn handle_connection(mut stream: &TcpStream) -> JoinHandle<()> {
     let mut buffer = [0; 1024];
     println!("We are inside the handle_connection function");
 
-    while stream.read(&mut buffer).unwrap() > 0{
-        println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
-    }
+    std::thread::spawn(move || {
+        while stream.read(&mut buffer).unwrap() > 0{
+            println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
+        }
 
-    println!("Connection closed, ready for the next one");
+        println!("Connection closed, ready for the next one");
+    })
+    
 }
 
 fn get_bind_addr() -> String {
