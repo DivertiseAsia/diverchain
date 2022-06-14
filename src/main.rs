@@ -6,8 +6,6 @@ use std::io::BufReader;
 use std::io::prelude::*;
 use std::thread::JoinHandle;
 
-
-
 fn main() {
     let binding_addr = get_bind_addr();
     let target_list = read_target_list_to_connect_to("config1.txt".to_string());
@@ -43,7 +41,6 @@ fn handle_connection(mut stream: &TcpStream) -> JoinHandle<()> {
         println!("Connection closed, ready for the next one");
     })
     
-}
 
 fn get_bind_addr() -> String {
     let maybe_arg = env::args().nth(3);
@@ -167,3 +164,4 @@ fn read_target_list_to_connect_to(filename: String) -> Vec<String> {
 
 //     Ok(())
 // }
+
