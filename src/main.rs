@@ -24,18 +24,21 @@ fn main() {
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
-        (*connection_list).lock().unwrap().push(stream.try_clone().unwrap());
+        
+        let locked_mutex = (*connection_list).lock();
+        let mut the_vector = locked_mutex.unwrap();
+        the_vector.push(stream.try_clone().unwrap());
 
         println!("Connection established!");
         let clients = connection_list.clone();
 
         std::thread::spawn(move || {
-            handle_connection(&stream, &clients);
+            handle_connection(&stream, clients);
         });
     }
 }
 
-fn handle_connection(mut stream: &TcpStream, connections: &Arc<Mutex<Vec<TcpStream>>>) {
+fn handle_connection(mut stream: &TcpStream, connections: Arc<Mutex<Vec<TcpStream>>>) {
     let mut buffer = [0; 1024];
     let timeout_duration = Duration::from_millis(200);
 
