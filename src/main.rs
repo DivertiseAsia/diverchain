@@ -38,6 +38,24 @@ fn main() {
     }
 }
 
+
+// REGISTER <client_id>
+// SEND <client_id> <message>
+// BROADCAST <message>
+fn command_parser(str: String){
+
+    let (cmd, payload) = str.split_at(2);
+    match cmd {
+        "exit" => {
+            // send data to all clients that are connected, i quit.
+            std::process::exit(0);
+        }
+        _ => {
+            println!("Unknown command");
+        }
+    }
+}
+
 fn handle_connection(mut stream: &TcpStream, connections: Arc<Mutex<Vec<TcpStream>>>) {
     let mut buffer = [0; 1024];
     let timeout_duration = Duration::from_millis(200);
