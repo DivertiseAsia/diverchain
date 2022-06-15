@@ -37,7 +37,6 @@ fn main() {
 
 fn handle_connection(mut stream: &TcpStream, connections: &Arc<Mutex<Vec<TcpStream>>>) {
     let mut buffer = [0; 1024];
-    println!("We are inside the handle_connection function");
     let timeout_duration = Duration::from_millis(200);
 
     stream.set_read_timeout(Some(timeout_duration)).unwrap();
@@ -45,17 +44,14 @@ fn handle_connection(mut stream: &TcpStream, connections: &Arc<Mutex<Vec<TcpStre
     loop {
         
         match stream.read(&mut buffer) {
-            |Ok(size) => {
-                if size == 0 {
-                    println!("Client disconnected");
-                    break;
-                }
-
+            |Ok(0) => {
+                println!("Client disconnected");
+                break;
+            },
+            |Ok(_size) => {
+                let my_str = String::from_utf8_lossy(&buffer[..]);
                 let mut answer = String::new();
                 answer.push_str("> ");
-
-                let my_str = String::from_utf8_lossy(&buffer[..]);
-
                 answer.push_str(&my_str);
 
                 // Spread the incoming text over all clients.
@@ -64,13 +60,12 @@ fn handle_connection(mut stream: &TcpStream, connections: &Arc<Mutex<Vec<TcpStre
                 });
             }
             |Err(_e) => {
-                // println!("Error: {}", e);
+                // println!("Error: {}", e);    // This gonna occur if the client doesn't send in data.
             }
-        }
-        
+        }        
     }
 
-    println!("Connection closed, ready for the next one");
+    println!("Connection closed");
 }
 
 fn get_bind_addr() -> String {
