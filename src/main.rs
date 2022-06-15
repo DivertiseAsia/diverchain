@@ -4,7 +4,6 @@ use std::fs::File;
 use std::net::TcpListener;
 use std::io::BufReader;
 use std::io::prelude::*;
-use std::thread::JoinHandle;
 
 fn main() {
     let binding_addr = get_bind_addr();
@@ -22,25 +21,31 @@ fn main() {
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
-        
+        let stream_clone = stream.try_clone().expect("Cannot clone stream"); //clone the stream
+
         println!("Connection established!");
-        handle_connection(&stream);
+
+        std::thread::spawn(move || {
+            handle_connection(&stream_clone);
+        });
+        
         stream_list.push(stream);
+        
+        println!("Stream list: {:?}", stream_list);
     }
 }
 
-fn handle_connection(mut stream: &TcpStream) -> JoinHandle<()> {
+fn handle_connection(mut stream: &TcpStream) {
     let mut buffer = [0; 1024];
     println!("We are inside the handle_connection function");
 
-    std::thread::spawn(move || {
-        while stream.read(&mut buffer).unwrap() > 0{
-            println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
-        }
-
-        println!("Connection closed, ready for the next one");
-    })
     
+    while stream.read(&mut buffer).unwrap() > 0{
+        println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
+    }
+
+    println!("Connection closed, ready for the next one");
+}
 
 fn get_bind_addr() -> String {
     let maybe_arg = env::args().nth(3);
