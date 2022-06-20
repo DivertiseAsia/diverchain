@@ -1,13 +1,27 @@
 use std::sync::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use std::net::TcpStream;
+use std::net::{Shutdown, TcpStream};
 use std::env;
 use std::fs::File;
 use std::net::TcpListener;
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::collections::HashMap;
+
+struct Task {
+    id: String,
+    name: String,
+    detail: String,
+    duedate: String,
+    owner: String,
+    total_vote: i32,
+}
+
+struct MapContainer {
+    connections: Arc<Mutex<HashMap<String, TcpStream>>>,
+    tasks: Arc<Mutex<HashMap<String, Task>>>, 
+}
 
 fn main() {
     let binding_addr = get_bind_addr();
@@ -22,7 +36,13 @@ fn main() {
     println!("You can try to connect to the server using telnet");
 
     let connection_map = Arc::new(Mutex::new(HashMap::new()));
+    let task_map = Arc::new(Mutex::new(HashMap::new()));
     // let mut count = 0;
+
+    let maps = Arc::new(Mutex::new(MapContainer {
+        connections: connection_map,
+        tasks: task_map,
+    }));
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
@@ -62,6 +82,18 @@ fn command_parser(stream: &TcpStream, arguments: String, connections: Arc<Mutex<
             std::process::exit(0);
         }
 
+        "TASKLIST" => {
+
+        }
+
+        "LIST" => {
+            let unlocked_map = connections.lock().unwrap();
+            let client_ids = unlocked_map.keys();
+
+            // needs formatting
+            println!("{:?}", unlocked_map.keys());
+        }
+
         "REGISTER" => {
             let mut unlocked_map = connections.lock().unwrap();
             let client_id = payload_list[0].trim().to_string();
@@ -93,8 +125,29 @@ fn command_parser(stream: &TcpStream, arguments: String, connections: Arc<Mutex<
             });
         }
 
+        "RENAME" => {
+            let mut unlocked_map = connections.lock().unwrap();
+            let old_id = payload_list[0].trim().to_string();
+            let new_id = payload_list[1].trim().to_string();
+            let old_stream = unlocked_map.remove(&old_id).unwrap();
+            // println!("{}", client_id);
+            
+            unlocked_map.insert(new_id, old_stream);
+            println!("{:?}", unlocked_map.keys());
+        }
+
+        "KICK" => {
+            let mut unlocked_map = connections.lock().unwrap();
+            let old_id = payload_list[0].trim().to_string();
+            let old_stream = unlocked_map.remove(&old_id).unwrap();
+            // println!("{}", client_id);
+            
+            old_stream.shutdown(Shutdown::Both).expect("shutdown call failed");
+            println!("{:?}", unlocked_map.keys());
+        }
+
         &_ => {
-            println!("{}", words[0]);
+            println!("Invalid command");
         }
     }
 }
@@ -135,7 +188,7 @@ fn get_bind_addr() -> String {
     println!("{:?}", maybe_arg);
     match maybe_arg {
         Some(arg) => format!("0.0.0.0:{}", arg),
-        None => "0.0.0.0:7007".to_owned()
+        None => "0.0.0.0:7007".to_owned(),
     }
 }
 
