@@ -18,9 +18,17 @@ struct Task {
     total_vote: i32,
 }
 
+#[derive(Copy, Clone)]
 struct MapContainer {
-    connections: Arc<Mutex<HashMap<String, TcpStream>>>,
-    tasks: Arc<Mutex<HashMap<String, Task>>>, 
+    connections: HashMap<String, TcpStream>,
+    tasks: HashMap<String, Task>, 
+}
+
+impl Clone for MapContainer {
+    fn clone(&self) -> MapContainer {
+        connections:,
+        tasks:, 
+    }
 }
 
 fn main() {
@@ -35,8 +43,8 @@ fn main() {
     println!("Server is started");
     println!("You can try to connect to the server using telnet");
 
-    let connection_map = Arc::new(Mutex::new(HashMap::new()));
-    let task_map = Arc::new(Mutex::new(HashMap::new()));
+    let connection_map = HashMap::<String, TcpStream>::new();
+    let task_map = HashMap::<String, Task>::new();
     // let mut count = 0;
 
     let maps = Arc::new(Mutex::new(MapContainer {
@@ -48,7 +56,7 @@ fn main() {
         let stream = stream.unwrap();
         println!("{:?}", stream);
         
-        let locked_mutex = (*connection_map).lock();
+        let locked_mutex = (*maps).lock();
         let the_hashmap = locked_mutex.unwrap();
 
         // let mut client_id = String::new();
@@ -60,10 +68,10 @@ fn main() {
         // count += 1;
 
         println!("Connection established!");
-        let clients = connection_map.clone();
+        // let container_clone = maps.clone();
 
         std::thread::spawn(move || {
-            handle_connection(&stream, clients);
+            handle_connection(&stream, maps);
         });
     }
 }
@@ -71,7 +79,10 @@ fn main() {
 // REGISTER <client_id>
 // SEND <client_id> <message>
 // BROADCAST <message>
-fn command_parser(stream: &TcpStream, arguments: String, connections: Arc<Mutex<HashMap<String, TcpStream>>>){
+fn command_parser(stream: &TcpStream, arguments: String, container: Arc<Mutex<MapContainer>>){
+    let unlocked_container = container.lock().unwrap();
+    let mut connections = unlocked_container.connections;
+
     let mut words: Vec<&str> = arguments.split(' ').collect();
     println!("{:?}", words);
 
@@ -87,31 +98,28 @@ fn command_parser(stream: &TcpStream, arguments: String, connections: Arc<Mutex<
         }
 
         "LIST" => {
-            let unlocked_map = connections.lock().unwrap();
-            let client_ids = unlocked_map.keys();
+            let client_ids = connections.keys();
 
             // needs formatting
-            println!("{:?}", unlocked_map.keys());
+            println!("{:?}", connections.keys());
         }
 
         "REGISTER" => {
-            let mut unlocked_map = connections.lock().unwrap();
             let client_id = payload_list[0].trim().to_string();
             println!("{}", client_id);
 
-            unlocked_map.insert(client_id, stream.try_clone().unwrap());
-            println!("{:?}", unlocked_map);
+            connections.insert(client_id, stream.try_clone().unwrap());
+            println!("{:?}", connections);
         }
 
         "SEND" => {
             let message = String::from_iter(payload_list.split_off(1)); 
-            let unlocked_map = connections.lock().unwrap();
             //payload list is now a length 1 list containing client_id
             let target_client = payload_list[0];
             println!("{}", target_client);
 
-            let client = unlocked_map.get(target_client); 
-            println!("{:?}", unlocked_map.keys());
+            let client = connections.get(target_client); 
+            println!("{:?}", connections.keys());
 
             client.unwrap().write_all(message.as_bytes()).unwrap();
         }
@@ -120,30 +128,28 @@ fn command_parser(stream: &TcpStream, arguments: String, connections: Arc<Mutex<
             // send data to all clients that are connected
             let payload = String::from_iter(payload_list);
 
-            connections.lock().unwrap().iter().for_each(|(_id, mut client)| {
+            connections.iter().for_each(|(_id, mut client)| {
                 client.write_all(payload.as_bytes()).unwrap();
             });
         }
 
         "RENAME" => {
-            let mut unlocked_map = connections.lock().unwrap();
             let old_id = payload_list[0].trim().to_string();
             let new_id = payload_list[1].trim().to_string();
-            let old_stream = unlocked_map.remove(&old_id).unwrap();
+            let old_stream = connections.remove(&old_id).unwrap();
             // println!("{}", client_id);
             
-            unlocked_map.insert(new_id, old_stream);
-            println!("{:?}", unlocked_map.keys());
+            connections.insert(new_id, old_stream);
+            println!("{:?}", connections.keys());
         }
 
         "KICK" => {
-            let mut unlocked_map = connections.lock().unwrap();
             let old_id = payload_list[0].trim().to_string();
-            let old_stream = unlocked_map.remove(&old_id).unwrap();
+            let old_stream = connections.remove(&old_id).unwrap();
             // println!("{}", client_id);
             
             old_stream.shutdown(Shutdown::Both).expect("shutdown call failed");
-            println!("{:?}", unlocked_map.keys());
+            println!("{:?}", connections.keys());
         }
 
         &_ => {
@@ -152,7 +158,7 @@ fn command_parser(stream: &TcpStream, arguments: String, connections: Arc<Mutex<
     }
 }
 
-fn handle_connection(mut stream: &TcpStream, connections: Arc<Mutex<HashMap<String, TcpStream>>>) {
+fn handle_connection(mut stream: &TcpStream, connections: Arc<Mutex<MapContainer>>) {
     let mut buffer = [0; 1024];
     let timeout_duration = Duration::from_millis(200);
 
