@@ -9,6 +9,8 @@ use std::io::BufReader;
 use std::io::prelude::*;
 use std::collections::HashMap;
 
+
+#[derive(Clone)]
 struct Task {
     id: String,
     name: String,
@@ -18,7 +20,6 @@ struct Task {
     total_vote: i32,
 }
 
-#[derive(Copy, Clone)]
 struct MapContainer {
     connections: HashMap<String, TcpStream>,
     tasks: HashMap<String, Task>, 
@@ -26,8 +27,12 @@ struct MapContainer {
 
 impl Clone for MapContainer {
     fn clone(&self) -> MapContainer {
-        connections:,
-        tasks:, 
+        MapContainer { 
+            connections: self.connections.iter().map(
+                |(key, value)| (key.clone(), value.try_clone().unwrap())
+            ).collect(),
+            tasks: self.tasks.clone(), 
+        }
     }
 }
 
@@ -56,8 +61,8 @@ fn main() {
         let stream = stream.unwrap();
         println!("{:?}", stream);
         
-        let locked_mutex = (*maps).lock();
-        let the_hashmap = locked_mutex.unwrap();
+        // let the_hashmap = (*maps).lock().unwrap();
+        let map = maps.clone();
 
         // let mut client_id = String::new();
         // client_id.push_str("Client_");
@@ -71,17 +76,18 @@ fn main() {
         // let container_clone = maps.clone();
 
         std::thread::spawn(move || {
-            handle_connection(&stream, maps);
+            handle_connection(&stream, map);
         });
     }
 }
+
 
 // REGISTER <client_id>
 // SEND <client_id> <message>
 // BROADCAST <message>
 fn command_parser(stream: &TcpStream, arguments: String, container: Arc<Mutex<MapContainer>>){
-    let unlocked_container = container.lock().unwrap();
-    let mut connections = unlocked_container.connections;
+    let locked_container = (*container).lock().unwrap();
+    let mut connections = &locked_container.connections;
 
     let mut words: Vec<&str> = arguments.split(' ').collect();
     println!("{:?}", words);
