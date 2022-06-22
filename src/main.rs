@@ -8,9 +8,18 @@ use std::net::TcpListener;
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
+use nanoid::nanoid;
+extern crate rustc_serialize;
+use rustc_serialize::json;
+extern crate bytevec;
+use bytevec::{ByteEncodable, ByteDecodable};
+extern crate timer;
+extern crate chrono;
 
 
-#[derive(Clone)]
+
+#[derive(Clone, Debug, RustcDecodable, RustcEncodable)]
 struct Task {
     id: String,
     name: String,
@@ -37,6 +46,12 @@ impl Clone for MapContainer {
 }
 
 fn main() {
+    let start = SystemTime::now();
+    let since_the_epoch = start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+    println!("{:?}", since_the_epoch);
+
     let binding_addr = get_bind_addr();
     let target_list = read_target_list_to_connect_to("config1.txt".to_string());
 
@@ -50,12 +65,21 @@ fn main() {
 
     let connection_map = HashMap::<String, TcpStream>::new();
     let task_map = HashMap::<String, Task>::new();
-    // let mut count = 0;
 
     let maps = Arc::new(Mutex::new(MapContainer {
         connections: connection_map,
         tasks: task_map,
     }));
+
+    //Scheduling repeating task
+    let mapclone = maps.clone();
+    let timer = timer::Timer::new();
+
+    timer.schedule_repeating(chrono::Duration::seconds(3), move || {
+        let mapcloneagain = mapclone.clone();
+
+        uplink(&target_list, mapcloneagain);
+      });
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
@@ -81,44 +105,226 @@ fn main() {
     }
 }
 
+fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
+    for server in target_list {
+        let clonemap = map.clone();
+        let stream_attempt = TcpStream::connect(server);
+
+        match stream_attempt {
+            | Ok(stream) => {
+                std::thread::spawn(move || {
+                    handle_connection(&stream, clonemap);
+                });
+                println!("lmao")
+            },
+            | Error => {
+                println!("Could not connect to server")
+            }
+        }
+    }
+}
+
 
 // REGISTER <client_id>
 // SEND <client_id> <message>
 // BROADCAST <message>
-fn command_parser(stream: &TcpStream, arguments: String, container: Arc<Mutex<MapContainer>>){
+fn command_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mutex<MapContainer>>){
     let mut locked_container = (*container).lock().unwrap();
-    let mut connections = &mut locked_container.connections;
+    // let mut connections = &mut locked_container.connections;
+    // let mut tasks = &mut locked_container.tasks;
 
-    let mut words: Vec<&str> = arguments.split(' ').collect();
+    let mut words: Vec<&str> = arguments.trim().split(' ').collect();
     println!("{:?}", words);
 
     let mut payload_list = words.split_off(1); // split into command and payload
     
-    match words[0] {
+    match words[0].trim() {
         "EXIT" => {
             std::process::exit(0);
         }
 
-        "TASKLIST" => {
+        "EXISTS" => {
 
         }
 
+        "TASKLIST" => {
+            let tasks = &locked_container.tasks;
+
+            for (_, value) in tasks.iter() {
+                let encoded = json::encode(&value).unwrap();
+
+                stream.write_all(encoded.as_bytes());
+                // println!("{:?}", value);
+            }
+            
+        }
+        
+        "TASKADD" => {
+            // for TASKADD <task> <client_id> <duedate>? <detail>?
+            // DATE - format YYYY-MM-DD
+            let tasks = &mut locked_container.tasks;
+
+            let taskname = payload_list[0]; 
+            let client = payload_list[1];
+
+            let mut task_id = nanoid!();
+            // let mut task_id = "idk".to_string();
+            // println!("{}", task_id);
+
+            // let task1 = Task {
+            //     id: "lmao".to_string(),
+            //     name: "lmao".to_string(),
+            //     detail: "lmao".to_string(),
+            //     duedate: "".to_string(),
+            //     owner: "lmao".to_string(),
+            //     total_vote: 0,
+            // };
+
+            // tasks.insert("idk".to_string(), task1);
+            
+            loop {
+                if !tasks.contains_key(&task_id) {
+                    break;
+                }
+
+                task_id = nanoid!();
+            }
+            println!("{}", task_id);
+            
+            if payload_list.len() == 3 {
+                let date_detail = payload_list[2];
+
+                if date_detail.chars().count() == 10 {
+                    let mut is_detail = true;
+                    let mut count = 0;
+
+                    for c in date_detail.chars() {
+                        if count == 5 || count == 8 {
+                            if c != '-' {
+                                is_detail = false;
+                                break; 
+                            }
+                        } else {
+                            if !c.is_numeric() {
+                                is_detail = false;
+                                break;
+                            }
+                        }
+
+                        count = count + 1;
+                    }
+
+                    if is_detail {
+                        let task = Task {
+                            id: task_id.to_string(),
+                            name: taskname.to_string(),
+                            detail: date_detail.to_string(),
+                            duedate: "".to_string(),
+                            owner: client.to_string(),
+                            total_vote: 0,
+                        };
+
+                        tasks.insert(task.id.clone(), task);
+
+                    } else {
+                        let task = Task {
+                            id: task_id.to_string(),
+                            name: taskname.to_string(),
+                            detail: "".to_string(),
+                            duedate: date_detail.to_string(),
+                            owner: client.to_string(),
+                            total_vote: 0,
+                        };
+
+                        tasks.insert(task.id.clone(), task);
+                    }
+
+                } else {
+                    let task = Task {
+                        id: task_id.to_string(),
+                        name: taskname.to_string(),
+                        detail: date_detail.to_string(),
+                        duedate: "".to_string(),
+                        owner: client.to_string(),
+                        total_vote: 0,
+                    };
+
+                    tasks.insert(task.id.clone(), task);
+                }
+
+
+            }
+
+            else if payload_list.len() == 4 {
+                let date = payload_list[2];
+                let det = payload_list[3];
+
+                let task = Task {
+                    id: task_id.to_string(),
+                    name: taskname.to_string(),
+                    detail: det.to_string(),
+                    duedate: date.to_string(),
+                    owner: client.to_string(),
+                    total_vote: 0,
+                };
+
+                tasks.insert(task.id.clone(), task);
+            }
+
+            else {
+                println!("INVALID INPUT!")
+            }
+        }
+
+        "TASKDEL" => {
+            let tasks = &mut locked_container.tasks;
+
+            if payload_list.len() == 1 {
+                let task_id = payload_list[0];
+
+                match tasks.remove(task_id) {
+                    | Some(_) => {
+                        stream.write_all("Task deleted successfully".as_bytes());
+                    },
+                    | None => {
+                        stream.write_all("Task does not exist".as_bytes());
+                    },
+                }
+            }
+        }
+
+
         "LIST" => {
+            let connections = &mut locked_container.connections;
+
             let client_ids = connections.keys();
 
             // needs formatting
             println!("{:?}", connections.keys());
+
+            let mut keys = Vec::new();
+
+            connections.iter().for_each(|(key, _)| {keys.push(key.as_bytes())});
+
+            // stream.write_all(keys.as_slice());
         }
 
         "REGISTER" => {
+            let connections = &mut locked_container.connections;
             let client_id = payload_list[0].trim().to_string();
             println!("{}", client_id);
 
-            connections.insert(client_id, stream.try_clone().unwrap());
-            println!("{:?}", connections);
+            if !connections.contains_key(&client_id) {
+                connections.insert(client_id, stream.try_clone().unwrap());
+                stream.write_all("Successfully registered".as_bytes());
+
+            } else {
+                stream.write_all("Client already exists".as_bytes());
+            }
         }
 
         "SEND" => {
+            let connections = &mut locked_container.connections;
             let message = String::from_iter(payload_list.split_off(1)); 
             //payload list is now a length 1 list containing client_id
             let target_client = payload_list[0];
@@ -131,6 +337,7 @@ fn command_parser(stream: &TcpStream, arguments: String, container: Arc<Mutex<Ma
         }
 
         "BROADCAST" => {
+            let connections = &mut locked_container.connections;
             // send data to all clients that are connected
             let payload = String::from_iter(payload_list);
 
@@ -140,16 +347,23 @@ fn command_parser(stream: &TcpStream, arguments: String, container: Arc<Mutex<Ma
         }
 
         "RENAME" => {
+            let connections = &mut locked_container.connections;
             let old_id = payload_list[0].trim().to_string();
             let new_id = payload_list[1].trim().to_string();
             let old_stream = connections.remove(&old_id).unwrap();
             // println!("{}", client_id);
             
-            connections.insert(new_id, old_stream);
+            if connections.contains_key(&new_id) {
+                stream.write_all("Could not insert because id is already used".as_bytes());
+            } else {
+                connections.insert(new_id, old_stream);
+                stream.write_all("ID successfully changed".as_bytes());
+            }
             println!("{:?}", connections.keys());
         }
 
         "KICK" => {
+            let connections = &mut locked_container.connections;
             let old_id = payload_list[0].trim().to_string();
             let old_stream = connections.remove(&old_id).unwrap();
             // println!("{}", client_id);
