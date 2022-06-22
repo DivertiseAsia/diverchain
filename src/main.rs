@@ -49,15 +49,17 @@ fn main() {
     let mapclone = maps.clone();
     let timer = timer::Timer::new();
 
-    timer.schedule_repeating(chrono::Duration::seconds(3), move || {
+    let guard = timer.schedule_repeating(chrono::Duration::seconds(1), move || {
         let mapcloneagain = mapclone.clone();
 
+        println!("Scheduling repeating task: uplink check");
+
         uplink(&target_list, mapcloneagain);
-      });
+    });
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
-        println!("{:?}", stream);
+        println!("Stream {:?}", stream);
         
         // let the_hashmap = (*maps).lock().unwrap();
         let map = maps.clone();
