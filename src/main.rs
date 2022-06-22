@@ -13,37 +13,11 @@ use nanoid::nanoid;
 extern crate rustc_serialize;
 use rustc_serialize::json;
 extern crate bytevec;
-use bytevec::{ByteEncodable, ByteDecodable};
 extern crate timer;
 extern crate chrono;
+mod task;
+use crate::task::*;
 
-
-
-#[derive(Clone, Debug, RustcDecodable, RustcEncodable)]
-struct Task {
-    id: String,
-    name: String,
-    detail: String,
-    duedate: String,
-    owner: String,
-    total_vote: i32,
-}
-
-struct MapContainer {
-    connections: HashMap<String, TcpStream>,
-    tasks: HashMap<String, Task>, 
-}
-
-impl Clone for MapContainer {
-    fn clone(&self) -> MapContainer {
-        MapContainer { 
-            connections: self.connections.iter().map(
-                |(key, value)| (key.clone(), value.try_clone().unwrap())
-            ).collect(),
-            tasks: self.tasks.clone(), 
-        }
-    }
-}
 
 fn main() {
     let start = SystemTime::now();
