@@ -87,7 +87,7 @@ fn main() {
 // BROADCAST <message>
 fn command_parser(stream: &TcpStream, arguments: String, container: Arc<Mutex<MapContainer>>){
     let mut locked_container = (*container).lock().unwrap();
-    let mut connections = &mut locked_container.connections;
+    let connections = &mut locked_container.connections;
 
     let mut words: Vec<&str> = arguments.split(' ').collect();
     println!("{:?}", words);
