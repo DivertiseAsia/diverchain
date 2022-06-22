@@ -130,6 +130,7 @@ fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
 // BROADCAST <message>
 fn command_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mutex<MapContainer>>){
     let mut locked_container = (*container).lock().unwrap();
+
     // let mut connections = &mut locked_container.connections;
     // let mut tasks = &mut locked_container.tasks;
 
