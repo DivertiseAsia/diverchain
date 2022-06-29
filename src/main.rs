@@ -50,7 +50,7 @@ fn main() {
     let mapclone = maps.clone();
     let timer = timer::Timer::new();
 
-    let guard = timer.schedule_repeating(chrono::Duration::seconds(1), move || {
+    let guard = timer.schedule_repeating(chrono::Duration::seconds(10), move || {
         let mapcloneagain = mapclone.clone();
 
         println!("Scheduling repeating task: uplink check");
@@ -85,36 +85,44 @@ fn main() {
 
 fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
     for server in target_list {
-        //
-        let stream_attempt = TcpStream::connect(server);
+        let mut locked_container = (*map).lock().unwrap();
+        let server_map = &mut locked_container.servers;
+        let mut found = false; 
+ 
+        for (server_id, stream) in server_map.iter() {
+            if target_list.contains(&stream.peer_addr().unwrap().to_string()) {
+                found = true; 
+            }
+        }
 
-        match stream_attempt {
-            | Ok(stream) => {
-                let mut locked_container = (*map).lock().unwrap();
+        if !found {
+            let stream_attempt = TcpStream::connect(server);
 
-                let mut server_id = nanoid!();
-                let server_map = &mut locked_container.servers;
+            match stream_attempt {
+                | Ok(stream) => {
+                    let mut server_id = nanoid!();
 
-                loop {
-                    if !server_map.contains_key(&server_id) {
-                        break;
+                    loop {
+                        if !server_map.contains_key(&server_id) {
+                            break;
+                        }
+
+                        server_id = nanoid!();
                     }
 
-                    server_id = nanoid!();
+                    server_map.insert(server_id, stream.try_clone().unwrap());
+
+                    let clonemap = map.clone();
+
+                    std::thread::spawn(move || {
+                        handle_connection(&stream, clonemap);
+                    });
+                    
+                    println!("Successfully connected");
+                },
+                | Error => {
+                    println!("Could not connect to server");
                 }
-
-                server_map.insert(server_id, stream.try_clone().unwrap());
-
-                let clonemap = map.clone();
-
-                std::thread::spawn(move || {
-                    handle_connection(&stream, clonemap);
-                });
-                
-                println!("Successfully connected");
-            },
-            | Error => {
-                println!("Could not connect to server");
             }
         }
     }
@@ -128,15 +136,17 @@ fn parse(mut incoming_cmd: Vec<&str>) -> String {
         } 
 
         _ => {
-            let returned_string = incoming_cmd.iter().fold("".to_string(), |acc, x| acc + x);
-            return returned_string.to_string();
+            let mut returned_string = incoming_cmd.iter().fold("".to_string(), |acc, x| acc + &" ".to_string() + x);
+            let without_space = returned_string.split_off(1);
+
+            return without_space.to_string();
         }
     }
 }
 
 fn get_client_id(command: &str) -> String {
     let args: Vec<&str> = command.split(' ').collect();
-
+    // println!("{:?}", args);
     match args[0] {
         "SEND" => {
             return args[1].to_string();  
@@ -198,7 +208,9 @@ fn command_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mute
             let parsed_command = parse(original_cmd);
 
             let client_id = get_client_id(&parsed_command);
-            let server_id = stream.local_addr().unwrap().to_string();
+            let own_server_ip = stream.local_addr().unwrap().to_string();
+
+            println!("{}", client_id);
 
             if connections.contains_key(&client_id) {
                 // actually process the command
@@ -207,15 +219,22 @@ fn command_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mute
             } else {
                 // loop through all servers and tell them to RELAY to the servers they are connected to
                 println!("Doesn't contain client_id");
+
                 for (key, value) in servers.iter() {
                     println!("{}, {:?}", key, value);
                 }
+
+                for (key, value) in connections.iter() {
+                    println!("{}, {:?}", key, value);
+                }
                 
-                for (_servid, mut stream) in servers.iter() {
-                    if !arguments.contains(&server_id) {
+                for (_serv_id, mut map_stream) in servers.iter() {
+                    let remote_server_ip = map_stream.peer_addr().unwrap().to_string();
+
+                    if !arguments.contains(&remote_server_ip) {
                         println!("looping");
-                        let new_cmd = "RELAY ".to_owned() + &server_id + " " + &arguments;
-                        stream.write_all(new_cmd.as_bytes());
+                        let new_cmd = "RELAY ".to_owned() + &own_server_ip + " " + &arguments;
+                        stream.write_all(new_cmd.as_bytes()); 
                     }
                 }
             }
