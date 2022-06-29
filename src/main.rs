@@ -180,28 +180,14 @@ fn get_client_id(command: &str) -> String {
 //     }
 // }
 
-
-// REGISTER <client_id>
-// SEND <client_id> <message>
-// BROADCAST <message>
-fn command_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mutex<MapContainer>>){
+fn relay_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mutex<MapContainer>>) {
     let mut locked_container = (*container).lock().unwrap();
-
-    // let mut connections = &mut locked_container.connections;
-    // let mut tasks = &mut locked_container.tasks;
-
     let mut words: Vec<&str> = arguments.trim().split(' ').collect();
     let original_cmd = words.clone();
-    println!("{:?}", words);
 
-    let mut payload_list = words.split_off(1); // split into command and payload
-    
     match words[0].trim() {
-        "EXIT" => {
-            std::process::exit(0);
-        }
-
         "RELAY" => {
+            let mut cloned = locked_container.clone();
             let servers = &locked_container.servers;
             let connections = &locked_container.connections;
 
@@ -214,8 +200,9 @@ fn command_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mute
 
             if connections.contains_key(&client_id) {
                 // actually process the command
-                println!("Contains client_id");
-                command_parser(connections.get(&client_id).unwrap(), parsed_command, container.clone());
+                println!("{}", parsed_command);
+                command_parser(connections.get(&client_id).unwrap(), parsed_command, &mut cloned);
+
             } else {
                 // loop through all servers and tell them to RELAY to the servers they are connected to
                 println!("Doesn't contain client_id");
@@ -234,31 +221,44 @@ fn command_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mute
                     if !arguments.contains(&remote_server_ip) {
                         println!("looping");
                         let new_cmd = "RELAY ".to_owned() + &own_server_ip + " " + &arguments;
-                        stream.write_all(new_cmd.as_bytes()); 
+                        map_stream.write_all(new_cmd.as_bytes()); 
                     }
                 }
             }
+        }
 
-            // if hash_map.contains_key(target_id) {
-            
-            // } else {
-            //     for (server_id, mut server) in servers {
-            //         if target_id.to_string() == server_id.to_string() {
-            //             server.write_all(message.as_bytes());
-            //         }
-            //     }
-            // }
+        _ => {
+            command_parser(stream, arguments, &mut locked_container);
+        }
+    }
+}
+
+
+// REGISTER <client_id>
+// SEND <client_id> <message>
+// BROADCAST <message>
+fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &mut MapContainer){
+    // let mut connections = &mut locked_container.connections;
+    // let mut tasks = &mut locked_container.tasks;
+
+    let mut words: Vec<&str> = arguments.trim().split(' ').collect();
+    let original_cmd = words.clone();
+    let mut payload_list = words.split_off(1); // split into command and payload
+    
+    match words[0].trim() {
+        "EXIT" => {
+            std::process::exit(0);
         }
 
         "SERVERLIST" => {
             let servers = &locked_container.servers;
 
-            // for (_, stream) in servers.iter() {
-            //     let addr = stream.peer_addr().unwrap();
+            for (_, server_stream) in servers.iter() {
+                let addr = server_stream.peer_addr().unwrap().to_string();
 
-            //     stream.write_all(addr.as_bytes());
-            //     // println!("{:?}", value);
-            // }
+                stream.write_all(addr.as_bytes());
+                // println!("{:?}", value);
+            }
         }
 
         "TASKLIST" => {
@@ -398,10 +398,10 @@ fn command_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mute
 
                 match tasks.remove(task_id) {
                     | Some(_) => {
-                        stream.write_all("Task deleted successfully".as_bytes());
+                        stream.write_all("Task deleted successfully\n".as_bytes());
                     },
                     | None => {
-                        stream.write_all("Task does not exist".as_bytes());
+                        stream.write_all("Task does not exist\n".as_bytes());
                     },
                 }
             }
@@ -430,10 +430,10 @@ fn command_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mute
 
             if !connections.contains_key(&client_id) {
                 connections.insert(client_id, stream.try_clone().unwrap());
-                stream.write_all("Successfully registered".as_bytes());
+                stream.write_all("Successfully registered\n".as_bytes());
 
             } else {
-                stream.write_all("Client already exists".as_bytes());
+                stream.write_all("Client already exists\n".as_bytes());
             }
         }
 
@@ -493,7 +493,7 @@ fn command_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mute
     }
 }
 
-fn handle_connection(mut stream: &TcpStream, connections: Arc<Mutex<MapContainer>>) {
+fn handle_connection(mut stream: &TcpStream, maps: Arc<Mutex<MapContainer>>) {
     let mut buffer = [0; 1024];
     let timeout_duration = Duration::from_millis(200);
 
@@ -511,8 +511,8 @@ fn handle_connection(mut stream: &TcpStream, connections: Arc<Mutex<MapContainer
                 answer.push_str("> ");
                 answer.push_str(&my_str);
                 
-                let clients = connections.clone();
-                command_parser(stream, my_str.to_string(), clients);
+                let clients = maps.clone();
+                relay_parser(stream, my_str.to_string(), clients);
                 // Spread the incoming text over all clients.
             }
             |Err(_e) => {
