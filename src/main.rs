@@ -12,7 +12,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use nanoid::nanoid;
 extern crate rustc_serialize;
 use rustc_serialize::json;
-extern crate bytevec;
 extern crate timer;
 extern crate chrono;
 mod task;
@@ -39,10 +38,12 @@ fn main() {
 
     let connection_map = HashMap::<String, TcpStream>::new();
     let task_map = HashMap::<String, Task>::new();
+    let server_map = HashMap::<String, TcpStream>::new();
 
     let maps = Arc::new(Mutex::new(MapContainer {
         connections: connection_map,
         tasks: task_map,
+        servers: server_map,
     }));
 
     //Scheduling repeating task
@@ -54,6 +55,7 @@ fn main() {
 
         println!("Scheduling repeating task: uplink check");
 
+        // if there exist cpnnectopn then skip
         uplink(&target_list, mapcloneagain);
     });
 
@@ -83,22 +85,90 @@ fn main() {
 
 fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
     for server in target_list {
-        let clonemap = map.clone();
+        //
         let stream_attempt = TcpStream::connect(server);
 
         match stream_attempt {
             | Ok(stream) => {
+                let mut locked_container = (*map).lock().unwrap();
+
+                let mut server_id = nanoid!();
+                let server_map = &mut locked_container.servers;
+
+                loop {
+                    if !server_map.contains_key(&server_id) {
+                        break;
+                    }
+
+                    server_id = nanoid!();
+                }
+
+                server_map.insert(server_id, stream.try_clone().unwrap());
+
+                let clonemap = map.clone();
+
                 std::thread::spawn(move || {
                     handle_connection(&stream, clonemap);
                 });
-                println!("lmao")
+                
+                println!("Successfully connected");
             },
             | Error => {
-                println!("Could not connect to server")
+                println!("Could not connect to server");
             }
         }
     }
 }
+
+fn parse(mut incoming_cmd: Vec<&str>) -> String {
+    match incoming_cmd[0].trim() {
+        "RELAY" => {
+            let new_list = incoming_cmd.split_off(2);
+            return parse(new_list);
+        } 
+
+        _ => {
+            let returned_string = incoming_cmd.iter().fold("".to_string(), |acc, x| acc + x);
+            return returned_string.to_string();
+        }
+    }
+}
+
+fn get_client_id(command: &str) -> String {
+    let args: Vec<&str> = command.split(' ').collect();
+
+    match args[0] {
+        "SEND" => {
+            return args[1].to_string();  
+        }
+
+        "RENAME" => {
+            return args[1].to_string();  
+        }
+
+        "KICK" => {
+            return args[1].to_string();  
+        }
+
+        _ => {
+            return "NOT RELAYABLE".to_string();
+        }
+    }
+}
+
+// fn is_server_not_in_relay(original_cmd) {
+//     return original_cmd.contains("")
+// }
+
+// assume: incoming_cmd, my_server_id
+// fn relay(original_cmd, servers) {
+//     for (server_id, stream) in servers.iter() {
+
+//       if original_cmd.contains(server_id) {
+//         send("RELAY "+my_server_id+" "+original_cmd)
+//       }
+//     }
+// }
 
 
 // REGISTER <client_id>
@@ -111,6 +181,7 @@ fn command_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mute
     // let mut tasks = &mut locked_container.tasks;
 
     let mut words: Vec<&str> = arguments.trim().split(' ').collect();
+    let original_cmd = words.clone();
     println!("{:?}", words);
 
     let mut payload_list = words.split_off(1); // split into command and payload
@@ -120,8 +191,55 @@ fn command_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mute
             std::process::exit(0);
         }
 
-        "EXISTS" => {
+        "RELAY" => {
+            let servers = &locked_container.servers;
+            let connections = &locked_container.connections;
 
+            let parsed_command = parse(original_cmd);
+
+            let client_id = get_client_id(&parsed_command);
+            let server_id = stream.local_addr().unwrap().to_string();
+
+            if connections.contains_key(&client_id) {
+                // actually process the command
+                println!("Contains client_id");
+                command_parser(connections.get(&client_id).unwrap(), parsed_command, container.clone());
+            } else {
+                // loop through all servers and tell them to RELAY to the servers they are connected to
+                println!("Doesn't contain client_id");
+                for (key, value) in servers.iter() {
+                    println!("{}, {:?}", key, value);
+                }
+                
+                for (_servid, mut stream) in servers.iter() {
+                    if !arguments.contains(&server_id) {
+                        println!("looping");
+                        let new_cmd = "RELAY ".to_owned() + &server_id + " " + &arguments;
+                        stream.write_all(new_cmd.as_bytes());
+                    }
+                }
+            }
+
+            // if hash_map.contains_key(target_id) {
+            
+            // } else {
+            //     for (server_id, mut server) in servers {
+            //         if target_id.to_string() == server_id.to_string() {
+            //             server.write_all(message.as_bytes());
+            //         }
+            //     }
+            // }
+        }
+
+        "SERVERLIST" => {
+            let servers = &locked_container.servers;
+
+            // for (_, stream) in servers.iter() {
+            //     let addr = stream.peer_addr().unwrap();
+
+            //     stream.write_all(addr.as_bytes());
+            //     // println!("{:?}", value);
+            // }
         }
 
         "TASKLIST" => {
@@ -311,6 +429,7 @@ fn command_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mute
             println!("{:?}", connections.keys());
 
             client.unwrap().write_all(message.as_bytes()).unwrap();
+            
         }
 
         "BROADCAST" => {

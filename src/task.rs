@@ -15,6 +15,7 @@ pub struct Task {
 pub struct MapContainer {
     pub connections: HashMap<String, TcpStream>,
     pub tasks: HashMap<String, Task>, 
+    pub servers: HashMap<String, TcpStream>, 
 }
 
 impl Clone for MapContainer {
@@ -24,6 +25,9 @@ impl Clone for MapContainer {
                 |(key, value)| (key.clone(), value.try_clone().unwrap())
             ).collect(),
             tasks: self.tasks.clone(), 
+            servers: self.servers.iter().map(
+                |(key, value)| (key.clone(), value.try_clone().unwrap())
+            ).collect(),
         }
     }
 }
