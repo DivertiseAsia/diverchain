@@ -16,6 +16,7 @@ extern crate timer;
 extern crate chrono;
 mod task;
 use crate::task::*;
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 
 
 fn main() {
@@ -90,6 +91,7 @@ fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
         let mut found = false; 
  
         for (server_id, stream) in server_map.iter() {
+            // randomly errors
             if target_list.contains(&stream.peer_addr().unwrap().to_string()) {
                 found = true; 
             }
@@ -184,6 +186,8 @@ fn relay_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mutex<
     let mut locked_container = (*container).lock().unwrap();
     let mut words: Vec<&str> = arguments.trim().split(' ').collect();
     let original_cmd = words.clone();
+    let mut payload_list = words.split_off(1); // split into command and payload
+    
 
     match words[0].trim() {
         "RELAY" => {
@@ -227,6 +231,42 @@ fn relay_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mutex<
             }
         }
 
+        "SEND" => { 
+            let connections = &locked_container.connections;
+            let servers = &locked_container.servers;
+
+            println!("{:?}", original_cmd);
+            let parsed_command = parse(original_cmd);
+            println!("{}", parsed_command);
+            let client_id = get_client_id(&parsed_command);
+            // println!("{}", client_id);
+            let own_server_ip = stream.local_addr().unwrap().to_string();
+
+            if connections.contains_key(&client_id) {
+                let message = String::from_iter(payload_list.split_off(1)); 
+                //payload list is now a length 1 list containing client_id
+                let target_client = payload_list[0];
+                println!("{}", target_client);
+
+                let client = connections.get(target_client); 
+                println!("{:?}", connections.keys());
+
+                client.unwrap().write_all(message.as_bytes()).unwrap();
+
+            } else {
+                for (_serv_id, mut map_stream) in servers.iter() {
+                    let remote_server_ip = map_stream.peer_addr().unwrap().to_string();
+
+                    if !arguments.contains(&remote_server_ip) {
+                        println!("looping");
+                        let new_cmd = "RELAY ".to_owned() + &own_server_ip + " " + &arguments;
+                        map_stream.write_all(new_cmd.as_bytes()); 
+                    }
+                }
+            }
+
+        }
+
         _ => {
             command_parser(stream, arguments, &mut locked_container);
         }
@@ -248,6 +288,26 @@ fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &
     match words[0].trim() {
         "EXIT" => {
             std::process::exit(0);
+        }
+
+        "SERVERREG" => {
+            let hardcode_psw = "CHANGE LATER";
+            let servers = &mut locked_container.servers;
+
+            if payload_list.len() == 2 {
+                let server_id = payload_list[0];
+                let psw = payload_list[1];
+
+                if psw == hardcode_psw {
+                    // servers.insert(server_id, );
+
+                } else {
+                    stream.write_all("wrong password!".as_bytes());
+                }
+
+            } else {
+                stream.write_all("wrong command syntax".as_bytes());
+            }
         }
 
         "SERVERLIST" => {
