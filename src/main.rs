@@ -185,7 +185,7 @@ fn get_client_id(command: &str) -> String {
 //     }
 // }
 
-fn relay_parser(mut stream: &TcpStream, arguments: String, container: Arc<Mutex<MapContainer>>) {
+fn relay_parser(stream: &TcpStream, arguments: String, container: Arc<Mutex<MapContainer>>) {
     let mut locked_container = (*container).lock().unwrap();
     let mut words: Vec<&str> = arguments.trim().split(' ').collect();
     let original_cmd = words.clone();
@@ -535,7 +535,7 @@ fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &
                 stream.write_all("Could not insert because id is already used".as_bytes());
             } else {
                 connections.insert(new_id, old_stream);
-                stream.write_all("ID successfully changed".as_bytes());
+                stream.write_all("ID successfully changed".as_bytes()).unwrap();
             }
             println!("{:?}", connections.keys());
         }

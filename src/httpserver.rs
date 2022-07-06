@@ -60,6 +60,6 @@ pub fn start_server(map: Arc<Mutex<MapContainer>>) {
     
     thread::spawn(move || {
       //Fire and forget
-      handle_by_actix(map);
+      handle_by_actix(map).unwrap();
     });
 }
