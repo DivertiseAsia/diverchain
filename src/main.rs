@@ -15,12 +15,20 @@ use rustc_serialize::json;
 extern crate timer;
 extern crate chrono;
 mod task;
+mod httpserver;
 use crate::task::*;
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
-use actix_rt::{Arbiter, System};
 
-#[actix_rt::main]
-async fn main() -> io::Result<()> {
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder, rt};
+
+
+#[get("/greet")]
+pub async fn greet()-> HttpResponse {
+
+    HttpResponse::Ok()
+        .body("Hello World!")
+}
+
+fn main() {
     let start = SystemTime::now();
     let since_the_epoch = start
         .duration_since(UNIX_EPOCH)
@@ -38,16 +46,8 @@ async fn main() -> io::Result<()> {
     println!("Server is started");
     println!("You can try to connect to the server using telnet");
 
-    HttpServer::new(|| {
-        App::new()
-            .route("/hello", web::get().to(|| async { "Hello World!" }))
-            .service(greet)
-    })
-    .bind(("127.0.0.1", 8080))?
-    .run()
-    .await
+    httpserver::start_server();
 
-    println!("HttpServer started");
 
     let connection_map = HashMap::<String, TcpStream>::new();
     let task_map = HashMap::<String, Task>::new();
@@ -72,9 +72,11 @@ async fn main() -> io::Result<()> {
         uplink(&target_list, mapcloneagain);
     });
 
+    println!("TaskServer: Listening...");
     for stream in listener.incoming() {
         let stream = stream.unwrap();
         println!("Stream {:?}", stream);
+
         
         // let the_hashmap = (*maps).lock().unwrap();
         let map = maps.clone();
