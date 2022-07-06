@@ -46,8 +46,6 @@ fn main() {
     println!("Server is started");
     println!("You can try to connect to the server using telnet");
 
-    httpserver::start_server();
-
 
     let connection_map = HashMap::<String, TcpStream>::new();
     let task_map = HashMap::<String, Task>::new();
@@ -62,6 +60,8 @@ fn main() {
     //Scheduling repeating task
     let mapclone = maps.clone();
     let timer = timer::Timer::new();
+
+    httpserver::start_server(maps.clone());
 
     let guard = timer.schedule_repeating(chrono::Duration::seconds(10), move || {
         let mapcloneagain = mapclone.clone();
