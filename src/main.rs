@@ -77,20 +77,9 @@ fn main() {
         let stream = stream.unwrap();
         println!("Stream {:?}", stream);
 
-        
-        // let the_hashmap = (*maps).lock().unwrap();
         let map = maps.clone();
 
-        // let mut client_id = String::new();
-        // client_id.push_str("Client_");
-        // client_id.push_str(&count.to_string());
-
-        // the_hashmap.insert(client_id, stream.try_clone().unwrap());
-
-        // count += 1;
-
         println!("Connection established!");
-        // let container_clone = maps.clone();
 
         std::thread::spawn(move || {
             handle_connection(&stream, map);
