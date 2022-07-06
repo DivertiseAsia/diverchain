@@ -2,42 +2,42 @@ use std::net::TcpListener;
 use std::net::TcpStream;
 use std::io::{Read,Write};
 use std::thread;
-fn handle_connection(mut stream: TcpStream) {
-    let mut buffer = [0; 1024];
 
-    stream.read(&mut buffer).unwrap();
+use actix_web::{web, get, post, App, HttpResponse, HttpServer, Responder};
 
-    let get = b"GET / HTTP/1.1\r\n";
+#[get("/")]
+async fn hello() -> impl Responder {
+    HttpResponse::Ok().body("Hello world?!")
+}
 
-    let (status_line, contents) = if buffer.starts_with(get) {
-        ("HTTP/1.1 200 OK", "Hello world")
-    } else {
-        ("HTTP/1.1 404 NOT FOUND", "What are you looking for?")
-    };
+#[post("/echo")]
+async fn echo(req_body: String) -> impl Responder {
+    HttpResponse::Ok().body(req_body)
+}
 
-    let response = format!(
-      "{}\r\nContent-Length: {}\r\n\r\n{}",
-      status_line,
-      contents.len(),
-      contents
-    );
+async fn manual_hello() -> impl Responder {
+    HttpResponse::Ok().body("Hey there!")
+}
 
-    stream.write(response.as_bytes()).unwrap();
+#[actix_web::main]
+async fn handle_by_actix() -> std::io::Result<()> {
+  HttpServer::new(|| {
+      App::new()
+          .service(hello)
+          .service(echo)
+          .route("/hey", web::get().to(manual_hello))
+  })
+  .bind(("0.0.0.0", 7878))?
+  .run()
+  .await
 }
 
 pub fn start_server() {
 
     println!("Spinning up HTTP server...\n");
+    
     thread::spawn(move || {
-      let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
-
-      for stream in listener.incoming() {
-          let stream = stream.unwrap();
-
-          thread::spawn(|| {
-              handle_connection(stream);
-          });
-      }
-    }
-  );
+      //Fire and forget
+      handle_by_actix();
+    });
 }
