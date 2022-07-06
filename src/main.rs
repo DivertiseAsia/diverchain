@@ -17,9 +17,10 @@ extern crate chrono;
 mod task;
 use crate::task::*;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use actix_rt::{Arbiter, System};
 
-
-fn main() {
+#[actix_rt::main]
+async fn main() -> io::Result<()> {
     let start = SystemTime::now();
     let since_the_epoch = start
         .duration_since(UNIX_EPOCH)
@@ -36,6 +37,17 @@ fn main() {
 
     println!("Server is started");
     println!("You can try to connect to the server using telnet");
+
+    HttpServer::new(|| {
+        App::new()
+            .route("/hello", web::get().to(|| async { "Hello World!" }))
+            .service(greet)
+    })
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await
+
+    println!("HttpServer started");
 
     let connection_map = HashMap::<String, TcpStream>::new();
     let task_map = HashMap::<String, Task>::new();
