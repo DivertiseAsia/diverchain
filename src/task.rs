@@ -1,8 +1,9 @@
 use std::collections::HashMap;
-use std::net::{Shutdown, TcpStream};
-use bytevec::{ByteEncodable, ByteDecodable};
+use std::net::{TcpStream};
+// use bytevec::{ByteEncodable, ByteDecodable};
+use serde::{Serialize, Deserialize};
 
-#[derive(Clone, Debug, RustcDecodable, RustcEncodable)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Task {
     pub id: String,
     pub name: String,

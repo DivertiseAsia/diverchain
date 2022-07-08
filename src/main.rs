@@ -1,24 +1,20 @@
 use std::sync::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use std::net::{Shutdown, TcpStream};
 use std::env;
 use std::fs::File;
-use std::net::TcpListener;
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use nanoid::nanoid;
-extern crate rustc_serialize;
-use rustc_serialize::json;
 extern crate timer;
 extern crate chrono;
 mod task;
 mod httpserver;
 use crate::task::*;
 
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder, rt};
+use actix_web::{get, HttpResponse};
 
 
 #[get("/greet")]
@@ -41,15 +37,15 @@ fn main() {
     println!("Server {:?}", binding_addr);
     println!("Target list: {:?}", target_list);
 
-    let listener = TcpListener::bind(binding_addr.to_string()).unwrap();
+    let listener = std::net::TcpListener::bind(binding_addr.to_string()).unwrap();
 
     println!("Server is started");
     println!("You can try to connect to the server using telnet");
 
 
-    let connection_map = HashMap::<String, TcpStream>::new();
+    let connection_map = HashMap::<String, std::net::TcpStream>::new();
     let task_map = HashMap::<String, Task>::new();
-    let server_map = HashMap::<String, TcpStream>::new();
+    let server_map = HashMap::<String, std::net::TcpStream>::new();
 
     let maps = Arc::new(Mutex::new(MapContainer {
         connections: connection_map,
@@ -63,7 +59,7 @@ fn main() {
 
     httpserver::start_server(maps.clone());
 
-    let guard = timer.schedule_repeating(chrono::Duration::seconds(10), move || {
+    let _guard = timer.schedule_repeating(chrono::Duration::seconds(10), move || {
         let mapcloneagain = mapclone.clone();
 
         println!("Scheduling repeating task: uplink check");
@@ -93,7 +89,7 @@ fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
         let server_map = &mut locked_container.servers;
         let mut found = false; 
  
-        for (server_id, stream) in server_map.iter() {
+        for (_server_id, stream) in server_map.iter() {
             // randomly errors
             if target_list.contains(&stream.peer_addr().unwrap().to_string()) {
                 found = true; 
@@ -101,7 +97,7 @@ fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
         }
 
         if !found {
-            let stream_attempt = TcpStream::connect(server);
+            let stream_attempt = std::net::TcpStream::connect(server);
 
             match stream_attempt {
                 | Ok(stream) => {
@@ -125,7 +121,7 @@ fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
                     
                     println!("Successfully connected");
                 },
-                | Error => {
+                | _error => {
                     println!("Could not connect to server");
                 }
             }
@@ -185,7 +181,7 @@ fn get_client_id(command: &str) -> String {
 //     }
 // }
 
-fn relay_parser(stream: &TcpStream, arguments: String, container: Arc<Mutex<MapContainer>>) {
+fn relay_parser(stream: &std::net::TcpStream, arguments: String, container: Arc<Mutex<MapContainer>>) {
     let mut locked_container = (*container).lock().unwrap();
     let mut words: Vec<&str> = arguments.trim().split(' ').collect();
     let original_cmd = words.clone();
@@ -228,7 +224,7 @@ fn relay_parser(stream: &TcpStream, arguments: String, container: Arc<Mutex<MapC
                     if !arguments.contains(&remote_server_ip) {
                         println!("looping");
                         let new_cmd = "RELAY ".to_owned() + &own_server_ip + " " + &arguments;
-                        map_stream.write_all(new_cmd.as_bytes()); 
+                        stream_handler(map_stream.write_all(new_cmd.as_bytes())); 
                     }
                 }
             }
@@ -263,7 +259,7 @@ fn relay_parser(stream: &TcpStream, arguments: String, container: Arc<Mutex<MapC
                     if !arguments.contains(&remote_server_ip) {
                         println!("looping");
                         let new_cmd = "RELAY ".to_owned() + &own_server_ip + " " + &arguments;
-                        map_stream.write_all(new_cmd.as_bytes()); 
+                        stream_handler(map_stream.write_all(new_cmd.as_bytes())); 
                     }
                 }
             }
@@ -276,16 +272,28 @@ fn relay_parser(stream: &TcpStream, arguments: String, container: Arc<Mutex<MapC
     }
 }
 
+fn stream_handler(write_result: Result<(), std::io::Error>) {
+    match write_result {
+        Ok(()) => {
+            //println!("Successfully wrote to stream")
+        }
+
+        _error => {
+            println!("Failed to write to stream")
+        }
+    }
+}
+
 
 // REGISTER <client_id>
 // SEND <client_id> <message>
 // BROADCAST <message>
-fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &mut MapContainer){
+fn command_parser(mut stream: &std::net::TcpStream, arguments: String, locked_container: &mut MapContainer){
     // let mut connections = &mut locked_container.connections;
     // let mut tasks = &mut locked_container.tasks;
 
     let mut words: Vec<&str> = arguments.trim().split(' ').collect();
-    let original_cmd = words.clone();
+    // let original_cmd = words.clone();
     let mut payload_list = words.split_off(1); // split into command and payload
     
     match words[0].trim() {
@@ -295,21 +303,21 @@ fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &
 
         "SERVERREG" => {
             let hardcode_psw = "CHANGE LATER";
-            let servers = &mut locked_container.servers;
+            let _servers = &mut locked_container.servers;
 
             if payload_list.len() == 2 {
-                let server_id = payload_list[0];
+                let _server_id = payload_list[0];
                 let psw = payload_list[1];
 
                 if psw == hardcode_psw {
                     // servers.insert(server_id, );
 
                 } else {
-                    stream.write_all("wrong password!".as_bytes());
+                    stream_handler(stream.write_all("wrong password!".as_bytes()));
                 }
 
             } else {
-                stream.write_all("wrong command syntax".as_bytes());
+                stream_handler(stream.write_all("wrong command syntax".as_bytes()));
             }
         }
 
@@ -319,7 +327,7 @@ fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &
             for (_, server_stream) in servers.iter() {
                 let addr = server_stream.peer_addr().unwrap().to_string();
 
-                stream.write_all(addr.as_bytes());
+                stream_handler(stream.write_all(addr.as_bytes()));
                 // println!("{:?}", value);
             }
         }
@@ -328,9 +336,9 @@ fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &
             let tasks = &locked_container.tasks;
 
             for (_, value) in tasks.iter() {
-                let encoded = json::encode(&value).unwrap();
+                let encoded = serde_json::to_string(&value).unwrap();
 
-                stream.write_all(encoded.as_bytes());
+                stream_handler(stream.write_all(encoded.as_bytes()));
                 // println!("{:?}", value);
             }
             
@@ -461,10 +469,10 @@ fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &
 
                 match tasks.remove(task_id) {
                     | Some(_) => {
-                        stream.write_all("Task deleted successfully\n".as_bytes());
+                        stream_handler(stream.write_all("Task deleted successfully\n".as_bytes()));
                     },
                     | None => {
-                        stream.write_all("Task does not exist\n".as_bytes());
+                        stream_handler(stream.write_all("Task does not exist\n".as_bytes()));
                     },
                 }
             }
@@ -474,7 +482,7 @@ fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &
         "LIST" => {
             let connections = &mut locked_container.connections;
 
-            let client_ids = connections.keys();
+            let _client_ids = connections.keys();
 
             // needs formatting
             println!("{:?}", connections.keys());
@@ -493,10 +501,10 @@ fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &
 
             if !connections.contains_key(&client_id) {
                 connections.insert(client_id, stream.try_clone().unwrap());
-                stream.write_all("Successfully registered\n".as_bytes());
+                stream_handler(stream.write_all("Successfully registered\n".as_bytes()));
 
             } else {
-                stream.write_all("Client already exists\n".as_bytes());
+                stream_handler(stream.write_all("Client already exists\n".as_bytes()));
             }
         }
 
@@ -510,7 +518,7 @@ fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &
             let client = connections.get(target_client); 
             println!("{:?}", connections.keys());
 
-            client.unwrap().write_all(message.as_bytes()).unwrap();
+            stream_handler(client.unwrap().write_all(message.as_bytes()));
             
         }
 
@@ -520,7 +528,7 @@ fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &
             let payload = String::from_iter(payload_list);
 
             connections.iter().for_each(|(_id, mut client)| {
-                client.write_all(payload.as_bytes()).unwrap();
+                stream_handler(client.write_all(payload.as_bytes()));
             });
         }
 
@@ -532,10 +540,10 @@ fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &
             // println!("{}", client_id);
             
             if connections.contains_key(&new_id) {
-                stream.write_all("Could not insert because id is already used".as_bytes());
+                stream_handler(stream.write_all("Could not insert because id is already used".as_bytes()));
             } else {
                 connections.insert(new_id, old_stream);
-                stream.write_all("ID successfully changed".as_bytes()).unwrap();
+                stream_handler(stream.write_all("ID successfully changed".as_bytes()));
             }
             println!("{:?}", connections.keys());
         }
@@ -546,7 +554,7 @@ fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &
             let old_stream = connections.remove(&old_id).unwrap();
             // println!("{}", client_id);
             
-            old_stream.shutdown(Shutdown::Both).expect("shutdown call failed");
+            old_stream.shutdown(std::net::Shutdown::Both).expect("shutdown call failed");
             println!("{:?}", connections.keys());
         }
 
@@ -556,7 +564,7 @@ fn command_parser(mut stream: &TcpStream, arguments: String, locked_container: &
     }
 }
 
-fn handle_connection(mut stream: &TcpStream, maps: Arc<Mutex<MapContainer>>) {
+fn handle_connection(mut stream: &std::net::TcpStream, maps: Arc<Mutex<MapContainer>>) {
     let mut buffer = [0; 1024];
     let timeout_duration = Duration::from_millis(200);
 
