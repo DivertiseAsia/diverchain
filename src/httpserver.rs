@@ -161,8 +161,6 @@ async fn delete_task(data: web::Data<AppState>, info: web::Path<String>) -> impl
 }
 
 
-
-
 #[allow(unreachable_code)]
 async fn kill_me() -> impl Responder {
     std::process::exit(0);

@@ -12,17 +12,11 @@ extern crate timer;
 extern crate chrono;
 mod task;
 mod httpserver;
+mod crypto;
 use crate::task::*;
 
 use actix_web::{get, HttpResponse};
 
-
-#[get("/greet")]
-pub async fn greet()-> HttpResponse {
-
-    HttpResponse::Ok()
-        .body("Hello World!")
-}
 
 fn main() {
     let start = SystemTime::now();
