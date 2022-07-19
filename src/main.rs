@@ -82,11 +82,24 @@ fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
         let mut locked_container = (*map).lock().unwrap();
         let server_map = &mut locked_container.servers;
         let mut found = false; 
+        let server_keys: Vec<String> = server_map.into_keys().collect();
  
-        for (_server_id, stream) in server_map.iter() {
+        for key in server_keys {
             // randomly errors
-            if target_list.contains(&stream.peer_addr().unwrap().to_string()) {
-                found = true; 
+            // chek if connection still ongoing
+            let stream = server_map.get(&key).unwrap();
+            let stream_status = &stream.peer_addr(); 
+
+            match stream_status {
+                | Ok(active_stream) => {    
+                    if target_list.contains(&stream.peer_addr().unwrap().to_string()) {
+                        found = true; 
+                    }
+                }, 
+                | _error => {
+                    let _ = server_map.remove(&key);
+                    println!("Peer disconnected!");
+                }
             }
         }
 
@@ -94,7 +107,7 @@ fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
             let stream_attempt = std::net::TcpStream::connect(server);
 
             match stream_attempt {
-                | Ok(stream) => {
+                | Ok(mut stream) => {
                     let mut server_id = nanoid!();
 
                     loop {
@@ -108,6 +121,8 @@ fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
                     server_map.insert(server_id, stream.try_clone().unwrap());
 
                     let clonemap = map.clone();
+
+                    stream.write_all("SERVERREG doggo_server idk".as_bytes());
 
                     std::thread::spawn(move || {
                         handle_connection(&stream, clonemap);
@@ -282,6 +297,10 @@ fn stream_handler(write_result: Result<(), std::io::Error>) {
 // REGISTER <client_id>
 // SEND <client_id> <message>
 // BROADCAST <message>
+
+// ADDVOTE <user_id> <task_id> 
+// WITHDRAWVOTE <user_id> <task_id> 
+// VALIDATETASK <user_id> <task_id> <signature> 
 fn command_parser(mut stream: &std::net::TcpStream, arguments: String, locked_container: &mut MapContainer){
     // let mut connections = &mut locked_container.connections;
     // let mut tasks = &mut locked_container.tasks;
@@ -295,16 +314,26 @@ fn command_parser(mut stream: &std::net::TcpStream, arguments: String, locked_co
             std::process::exit(0);
         }
 
+        // "ADDVOTE" => {
+        //     let mut tasks = &mut locked_container.tasks;
+
+        //     if payload_list.len() == 1 {
+        //         let user_id = payload_list[0];
+
+        //         let chosen_task 
+        //     }
+        // }
+
         "SERVERREG" => {
             let hardcode_psw = "CHANGE LATER";
-            let _servers = &mut locked_container.servers;
+            let servers = &mut locked_container.servers;
 
             if payload_list.len() == 2 {
-                let _server_id = payload_list[0];
+                let server_id = payload_list[0];
                 let psw = payload_list[1];
 
-                if psw == hardcode_psw {
-                    // servers.insert(server_id, );
+                if true {
+                    servers.insert(server_id.to_string(), stream.try_clone().unwrap());
 
                 } else {
                     stream_handler(stream.write_all("wrong password!".as_bytes()));
@@ -325,6 +354,91 @@ fn command_parser(mut stream: &std::net::TcpStream, arguments: String, locked_co
                 // println!("{:?}", value);
             }
         }
+
+        "WITHDRAWVOTE" => {
+            let user_id = payload_list[0].to_string(); 
+            let task_name = payload_list[1].to_string();
+
+            let tasks = &mut locked_container.tasks;
+            let task_item = tasks.get_mut(&task_name); 
+            
+            match task_item {
+                | Some(task) => {
+                    let voters = &mut task.voter_map; 
+                    let voter = voters.get_mut(&user_id); 
+
+                    match voter {
+                        | Some(_) => {
+                            task.total_vote = task.total_vote - 1;
+                            voters.insert(user_id.to_string(), None);
+                            stream_handler(stream.write_all("Successfully withdrew vote\n".as_bytes()));
+                        }, 
+                        | None => {
+                            stream_handler(stream.write_all("Voter not found\n".as_bytes()));
+                        },
+                    }
+                }, 
+                | None => {stream_handler(stream.write_all("Task deleted successfully\n".as_bytes()));
+                },
+            }
+        }
+
+        "ADDVOTE" => {
+            let user_id = payload_list[0].to_string(); 
+            let task_name = payload_list[1].to_string();
+
+            let tasks = &mut locked_container.tasks;
+            let task_item = tasks.get_mut(&task_name); 
+            
+            match task_item {
+                | Some(task) => {
+                    let voters = &mut task.voter_map; 
+                    let voter = voters.get_mut(&user_id); 
+
+                    match voter {
+                        | Some(_) => {
+                            stream_handler(stream.write_all("Vote already counted\n".as_bytes()));
+                        }, 
+                        | None => {
+                            task.total_vote = task.total_vote + 1;
+                            voters.insert(user_id.to_string(), None);
+                            stream_handler(stream.write_all("Successfully added vote\n".as_bytes()));
+                        },
+                    }
+                }, 
+                | None => {stream_handler(stream.write_all("Task deleted successfully\n".as_bytes()));
+                },
+            }
+        }
+
+        "VALIDATETASK" => {
+            let user_id = payload_list[0].to_string(); 
+            let task_name = payload_list[1].to_string();
+            let signature = payload_list[2].to_string();
+
+            let tasks = &mut locked_container.tasks;
+            let task_item = tasks.get_mut(&task_name); 
+            
+            match task_item {
+                | Some(task) => {
+                    let voters = &mut task.voter_map; 
+                    let voter = voters.get_mut(&user_id); 
+
+                    match voter {
+                        | Some(_) => {
+                            stream_handler(stream.write_all("Vote already counted\n".as_bytes()));
+                        }, 
+                        | None => {
+                            voters.insert(user_id.to_string(), Some(signature.to_string()));
+                            stream_handler(stream.write_all("Successfully added vote\n".as_bytes()));
+                        },
+                    }
+                }, 
+                | None => {stream_handler(stream.write_all("Task deleted successfully\n".as_bytes()));
+                },
+            }
+        }
+
 
         "TASKLIST" => {
             let tasks = &locked_container.tasks;
@@ -401,6 +515,7 @@ fn command_parser(mut stream: &std::net::TcpStream, arguments: String, locked_co
                             duedate: "".to_string(),
                             owner: client.to_string(),
                             total_vote: 0,
+                            voter_map: HashMap::<String, Option<String>>::new(),
                         };
 
                         tasks.insert(task.id.clone(), task);
@@ -413,6 +528,7 @@ fn command_parser(mut stream: &std::net::TcpStream, arguments: String, locked_co
                             duedate: date_detail.to_string(),
                             owner: client.to_string(),
                             total_vote: 0,
+                            voter_map: HashMap::<String, Option<String>>::new(),
                         };
 
                         tasks.insert(task.id.clone(), task);
@@ -426,6 +542,7 @@ fn command_parser(mut stream: &std::net::TcpStream, arguments: String, locked_co
                         duedate: "".to_string(),
                         owner: client.to_string(),
                         total_vote: 0,
+                        voter_map: HashMap::<String, Option<String>>::new(),
                     };
 
                     tasks.insert(task.id.clone(), task);
@@ -445,6 +562,7 @@ fn command_parser(mut stream: &std::net::TcpStream, arguments: String, locked_co
                     duedate: date.to_string(),
                     owner: client.to_string(),
                     total_vote: 0,
+                    voter_map: HashMap::<String, Option<String>>::new(),
                 };
 
                 tasks.insert(task.id.clone(), task);

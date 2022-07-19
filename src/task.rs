@@ -11,6 +11,7 @@ pub struct Task {
     pub duedate: String,
     pub owner: String,
     pub total_vote: i32,
+    pub voter_map: HashMap<String, Option<String>>,
 }
 
 pub struct MapContainer {
