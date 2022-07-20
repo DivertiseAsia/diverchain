@@ -26,16 +26,12 @@ fn main() {
     println!("{:?}", since_the_epoch);
 
     let binding_addr = get_bind_addr();
-    let target_list = read_target_list_to_connect_to("config1.txt".to_string());
-
-    println!("Server {:?}", binding_addr);
-    println!("Target list: {:?}", target_list);
-
     let listener = std::net::TcpListener::bind(binding_addr.to_string()).unwrap();
 
     println!("Server is started");
     println!("You can try to connect to the server using telnet");
 
+    println!("Server {:?}", binding_addr);
 
     let connection_map = HashMap::<String, std::net::TcpStream>::new();
     let task_map = HashMap::<String, Task>::new();
@@ -51,6 +47,7 @@ fn main() {
     let mapclone = maps.clone();
     let timer = timer::Timer::new();
 
+    
     httpserver::start_server(maps.clone());
 
     let _guard = timer.schedule_repeating(chrono::Duration::seconds(10), move || {
@@ -59,7 +56,14 @@ fn main() {
         println!("Scheduling repeating task: uplink check");
 
         // if there exist cpnnectopn then skip
-        uplink(&target_list, mapcloneagain);
+        std::thread::spawn(move || {
+
+            let target_list = read_target_list_to_connect_to("config1.txt".to_string());
+            println!("Target list: {:?}", target_list);
+
+            uplink(&target_list, mapcloneagain);
+        });
+        
     });
 
     println!("TaskServer: Listening...");
@@ -82,7 +86,6 @@ fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
         let mut locked_container = (*map).lock().unwrap();
         let server_map = &mut locked_container.servers;
         let mut found = false; 
-        // let server_keys: Vec<String> = server_map.into_keys().collect();
         let mut server_keys: Vec<String> = Vec::new();
  
         for (stream_key, stream_obj) in server_map.iter() {
@@ -303,6 +306,10 @@ fn relay_parser(mut stream: &std::net::TcpStream, arguments: String, container: 
             let client = payload_list[1];
 
             let mut task_id = nanoid!();
+            let mut valid = true; 
+
+            let mut detail_text = "None".to_string();
+            let mut duedate_text = None;
             
             loop {
                 if !tasks.contains_key(&task_id) {
@@ -337,70 +344,94 @@ fn relay_parser(mut stream: &std::net::TcpStream, arguments: String, container: 
                     }
 
                     if is_detail {
-                        let task = Task {
-                            id: task_id.to_string(),
-                            name: taskname.to_string(),
-                            detail: date_detail.to_string(),
-                            duedate: "".to_string(),
-                            owner: client.to_string(),
-                            total_vote: 0,
-                            voter_map: HashMap::<String, Option<String>>::new(),
-                        };
+                        detail_text = date_detail.to_string();
+                        duedate_text = None;
 
-                        tasks.insert(task.id.clone(), task);
+                        // let task = Task {
+                        //     id: task_id.to_string(),
+                        //     name: taskname.to_string(),
+                        //     detail: date_detail.to_string(),
+                        //     duedate: "".to_string(),
+                        //     owner: client.to_string(),
+                        //     total_vote: 0,
+                        //     voter_map: HashMap::<String, Option<String>>::new(),
+                        // };
+
+                        // tasks.insert(task.id.clone(), task);
 
                     } else {
-                        let task = Task {
-                            id: task_id.to_string(),
-                            name: taskname.to_string(),
-                            detail: "".to_string(),
-                            duedate: date_detail.to_string(),
-                            owner: client.to_string(),
-                            total_vote: 0,
-                            voter_map: HashMap::<String, Option<String>>::new(),
-                        };
+                        duedate_text = Some(date_detail.to_string());
 
-                        tasks.insert(task.id.clone(), task);
+                        // let task = Task {
+                        //     id: task_id.to_string(),
+                        //     name: taskname.to_string(),
+                        //     detail: "".to_string(),
+                        //     duedate: date_detail.to_string(),
+                        //     owner: client.to_string(),
+                        //     total_vote: 0,
+                        //     voter_map: HashMap::<String, Option<String>>::new(),
+                        // };
+
+                        // tasks.insert(task.id.clone(), task);
                     }
 
                 } else {
-                    let task = Task {
-                        id: task_id.to_string(),
-                        name: taskname.to_string(),
-                        detail: date_detail.to_string(),
-                        duedate: "".to_string(),
-                        owner: client.to_string(),
-                        total_vote: 0,
-                        voter_map: HashMap::<String, Option<String>>::new(),
-                    };
+                    detail_text = date_detail.to_string();
+                    duedate_text = None;
+                    // let task = Task {
+                    //     id: task_id.to_string(),
+                    //     name: taskname.to_string(),
+                    //     detail: date_detail.to_string(),
+                    //     duedate: "".to_string(),
+                    //     owner: client.to_string(),
+                    //     total_vote: 0,
+                    //     voter_map: HashMap::<String, Option<String>>::new(),
+                    // };
 
-                    tasks.insert(task.id.clone(), task);
+                    // tasks.insert(task.id.clone(), task);
                 }
 
 
             }
 
             else if payload_list.len() == 4 {
-                let date = payload_list[2];
-                let det = payload_list[3];
+                duedate_text = Some(payload_list[2].to_string());
+                detail_text = payload_list[3].to_string();
 
-                let task = Task {
-                    id: task_id.to_string(),
-                    name: taskname.to_string(),
-                    detail: det.to_string(),
-                    duedate: date.to_string(),
-                    owner: client.to_string(),
-                    total_vote: 0,
-                    voter_map: HashMap::<String, Option<String>>::new(),
-                };
+                // let task = Task {
+                //     id: task_id.to_string(),
+                //     name: taskname.to_string(),
+                //     detail: det.to_string(),
+                //     duedate: date.to_string(),
+                //     owner: client.to_string(),
+                //     total_vote: 0,
+                //     voter_map: HashMap::<String, Option<String>>::new(),
+                // };
 
-                tasks.insert(task.id.clone(), task);
+                // tasks.insert(task.id.clone(), task);
             }
 
             else {
-                println!("INVALID INPUT!")
+                valid = false;
+                println!("INVALID INPUT!");
             }
 
+            if valid {
+                let task = Task {
+                    id: Some(task_id.to_string()),
+                    content: taskname.to_string(),
+                    status: "new".to_string(),
+                    detail: detail_text,
+                    deadline: duedate_text,
+                    creator: client.to_string(),
+                    vote: 0,
+                    voted: HashMap::<String, Option<String>>::new(),
+                    comments: HashMap::<String, String>::new(),
+                };
+    
+                tasks.insert(task_id.clone(), task);
+            }
+            
             let servers = &locked_container.servers;
 
             // for (_serv_id, mut map_stream) in servers.iter() {
@@ -425,7 +456,7 @@ fn relay_parser(mut stream: &std::net::TcpStream, arguments: String, container: 
             
             match task_item {
                 | Some(task) => {
-                    let voters = &mut task.voter_map; 
+                    let voters = &mut task.voted; 
                     let voter = voters.get_mut(&user_id); 
 
                     match voter {
@@ -433,7 +464,7 @@ fn relay_parser(mut stream: &std::net::TcpStream, arguments: String, container: 
                             stream_handler(stream.write_all("Vote already counted\n".as_bytes()));
                         }, 
                         | None => {
-                            task.total_vote = task.total_vote + 1;
+                            task.vote = task.vote + 1;
                             voters.insert(user_id.to_string(), None);
                             stream_handler(stream.write_all("Successfully added vote\n".as_bytes()));
                         },
@@ -457,12 +488,12 @@ fn relay_parser(mut stream: &std::net::TcpStream, arguments: String, container: 
             
             match task_item {
                 | Some(task) => {
-                    let voters = &mut task.voter_map; 
+                    let voters = &mut task.voted; 
                     let voter = voters.get_mut(&user_id); 
 
                     match voter {
                         | Some(_) => {
-                            task.total_vote = task.total_vote - 1;
+                            task.vote = task.vote - 1;
                             voters.insert(user_id.to_string(), None);
                             stream_handler(stream.write_all("Successfully withdrew vote\n".as_bytes()));
                         }, 
@@ -490,7 +521,7 @@ fn relay_parser(mut stream: &std::net::TcpStream, arguments: String, container: 
             
             match task_item {
                 | Some(task) => {
-                    let voters = &mut task.voter_map; 
+                    let voters = &mut task.voted; 
                     let voter = voters.get_mut(&user_id); 
 
                     match voter {

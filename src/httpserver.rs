@@ -7,8 +7,8 @@ use std::thread;
 
 use crate::task::*;
 
-use actix_web::{web, get, post, put, patch, delete, App, HttpResponse, HttpServer, Responder};
-
+use actix_web::{web, get, post, put, patch, delete, http, App, HttpResponse, HttpServer, Responder};
+use actix_cors::Cors;
 
 struct AppState {
     map: Arc<Mutex<MapContainer>>,
@@ -26,14 +26,17 @@ async fn echo(req_body: String) -> impl Responder {
 
 #[get("/tasks")]
 async fn tasks(data: web::Data<AppState>) -> impl Responder {
+    println!("HSTARRTTT");
     let mut json_vec: Vec<Task> = Vec::new();
     let map = &data.map;
     let tasks = &map.lock().unwrap().tasks;
 
     for (_task_id, task) in tasks {
+        println!("HASDHASDHASDHAS");
         json_vec.push(task.clone());
     }
 
+    println!("ENDDD");
     // json_vec.push(Task {
     //   id: "a".to_string(),
     //   name: "b".to_string(),
@@ -60,7 +63,7 @@ async fn create_task(req_body: String, data: web::Data<AppState>) -> impl Respon
     match deserialized {
         | Ok(ref _val) => {
             let task_item = deserialized.unwrap();
-            tasks_map.insert(task_item.id.clone(), task_item);
+            tasks_map.insert(task_item.id.as_ref().unwrap().clone(), task_item);
             HttpResponse::Ok().body("Successfully added task")
         } 
 
@@ -85,8 +88,8 @@ async fn destructive_update(req_body: String, data: web::Data<AppState>, info: w
             match removed {
                 | Some(_) => {
                     let mut task_item = deserialized.unwrap();
-                    task_item.id = input_id;
-                    tasks_map.insert(task_item.id.clone(), task_item);
+                    task_item.id = Some(input_id.clone());
+                    tasks_map.insert(input_id, task_item);
                     HttpResponse::Ok().body("Successfully replaced task")
                 }
         
@@ -117,13 +120,16 @@ async fn partial_update(req_body: String, data: web::Data<AppState>, info: web::
             match editable {
                 | Some(task_edit) => {
                     let task_item = deserialized.unwrap();
-
+                    
                     task_edit.id = task_item.id;
-                    task_edit.name = task_item.name;
+                    task_edit.content = task_item.content;
+                    task_edit.vote = task_item.vote;
+                    task_edit.deadline = task_item.deadline;
+                    task_edit.status = task_item.status;
+                    task_edit.voted = task_item.voted;
+                    task_edit.creator = task_item.creator;
                     task_edit.detail = task_item.detail;
-                    task_edit.duedate = task_item.duedate;
-                    task_edit.owner = task_item.owner;
-                    task_edit.total_vote = task_item.total_vote;
+                    task_edit.comments = task_item.comments;
 
                     HttpResponse::Ok().body("Successfully updated task")
                 }
@@ -170,10 +176,13 @@ async fn kill_me() -> impl Responder {
 #[actix_web::main]
 async fn handle_by_actix(map: Arc<Mutex<MapContainer>>) -> std::io::Result<()> {
     HttpServer::new(move || {
+        let cors = Cors::permissive();
+
         App::new()
                 .app_data(web::Data::new(AppState {
                 map: map.clone(),
             }))
+            .wrap(cors)
             .service(hello)
             .service(echo)
             .service(tasks)
@@ -181,7 +190,7 @@ async fn handle_by_actix(map: Arc<Mutex<MapContainer>>) -> std::io::Result<()> {
             .route("/kill", web::get().to(kill_me))
     })
     .workers(8)
-    .bind(("0.0.0.0", 7878))?
+    .bind(("localhost", 7878))?
     .run()
     .await
 }

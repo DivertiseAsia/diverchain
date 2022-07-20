@@ -5,13 +5,16 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Task {
-    pub id: String,
-    pub name: String,
+    pub id: Option<String>,
+    pub content: String, 
+    pub vote: i32,
+    pub deadline: Option<String>,
+    pub status: String,
+    pub voted: HashMap<String, Option<String>>,
+    pub creator: String,
     pub detail: String,
-    pub duedate: String,
-    pub owner: String,
-    pub total_vote: i32,
-    pub voter_map: HashMap<String, Option<String>>,
+    pub comments: HashMap<String, String>,
+    //Array<Json>
 }
 
 pub struct MapContainer {
