@@ -7,10 +7,8 @@ extern crate signature;
 use sha256::digest;
 use rsa::{PublicKey, RsaPrivateKey, RsaPublicKey, PaddingScheme};
 use rsa::Hash::SHA3_256;
-use openssl::pkey::PKey;
 use std::str;
-use pem::{Pem, encode};
-use signature::{Signature, Signer, Verifier};
+use signature::{Signer, Verifier};
 
 
 pub fn hash(msg: &str) -> String {

@@ -17,6 +17,29 @@ pub struct Task {
     //Array<Json>
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MyObj {
+    pub body: String,
+    pub user: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NewComment {
+    pub user_id: String,
+    pub comment: String
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NewVote {
+    pub user_id: String,
+    pub signature: Option<String>
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserInfo {
+    pub user_id: String,
+}
+
 pub struct MapContainer {
     pub connections: HashMap<String, TcpStream>,
     pub tasks: HashMap<String, Task>, 

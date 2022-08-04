@@ -7,15 +7,17 @@ use std::io::BufReader;
 use std::io::prelude::*;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::net::{SocketAddr};
+// use stdweb::web::{Date};
 use nanoid::nanoid;
 extern crate timer;
 extern crate chrono;
+// extern crate stdweb;
 mod task;
 mod httpserver;
 mod crypto;
 use crate::task::*;
-
-use actix_web::{get, HttpResponse};
+use std::str::FromStr;
 
 
 fn main() {
@@ -50,19 +52,21 @@ fn main() {
     
     httpserver::start_server(maps.clone());
 
-    let _guard = timer.schedule_repeating(chrono::Duration::seconds(10), move || {
+    let _guard = timer.schedule_repeating(chrono::Duration::seconds(20), move || {
         let mapcloneagain = mapclone.clone();
 
         println!("Scheduling repeating task: uplink check");
 
+        let uplinking = false;
         // if there exist cpnnectopn then skip
-        std::thread::spawn(move || {
+        if (!uplinking){
+            std::thread::spawn(move || {
+                let target_list = read_target_list_to_connect_to("config1.txt".to_string());
+                println!("Target list: {:?}", target_list);
 
-            let target_list = read_target_list_to_connect_to("config1.txt".to_string());
-            println!("Target list: {:?}", target_list);
-
-            uplink(&target_list, mapcloneagain);
-        });
+                uplink(&target_list, mapcloneagain);
+            });
+        }
         
     });
 
@@ -82,36 +86,54 @@ fn main() {
 }
 
 fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
+    // let uplinking = true;
     for server in target_list {
+        println!("connecting to {:?}", server);
         let mut locked_container = (*map).lock().unwrap();
+        println!("MUTEX PASSED");
         let server_map = &mut locked_container.servers;
+        // let mut server_map = HashMap::<String, std::net::TcpStream>::new();
         let mut found = false; 
         let mut server_keys: Vec<String> = Vec::new();
- 
+        
         for (stream_key, stream_obj) in server_map.iter() {
+            println!("checking server map {:?}", stream_key);
             // randomly errors
             // chek if connection still ongoing
             let stream_status = &stream_obj.peer_addr(); 
 
             match stream_status {
                 | Ok(stream_ip) => {    
-                    if target_list.contains(&stream_ip.to_string()) {
+                    println!("{}", &stream_ip.to_string());
+
+                    let list_ip: String = String::from(stream_ip.to_string());
+                    let map_ip: String = String::from(server);
+
+                    if list_ip.eq(&map_ip) {
                         found = true; 
                     }
                 }, 
                 | _error => {
                     server_keys.push(stream_key.to_string());
-                    println!("Peer disconnected!");
+                    println!("Peer disconnected!: Add to garbage : {:?}", stream_key);
                 }
             }
         }
 
         for key in server_keys.iter() {
+            println!("deleting server {:?}", key);
             let _ = server_map.remove(key);
         }
 
+        println!("FOUND: {:?}", found);
         if !found {
-            let stream_attempt = std::net::TcpStream::connect(server);
+            println!("not found? attempt to connect to {:?}", server);  
+            let socket = SocketAddr::from_str(server).unwrap();
+            // let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+            let time = Duration::from_millis(1000);
+
+            let stream_attempt = std::net::TcpStream::connect_timeout(&socket, time);
+            // println!("passed attempt");
 
             match stream_attempt {
                 | Ok(mut stream) => {
@@ -129,7 +151,7 @@ fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
 
                     let clonemap = map.clone();
 
-                    stream.write_all("SERVERREG doggo_server idk".as_bytes());
+                    // stream.write_all("SERVERREG doggo_server idk".as_bytes());
 
                     std::thread::spawn(move || {
                         handle_connection(&stream, clonemap);
@@ -143,6 +165,7 @@ fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
             }
         }
     }
+    // let uplinking = false;
 }
 
 fn parse(mut incoming_cmd: Vec<&str>) -> String {
@@ -397,18 +420,6 @@ fn relay_parser(mut stream: &std::net::TcpStream, arguments: String, container: 
             else if payload_list.len() == 4 {
                 duedate_text = Some(payload_list[2].to_string());
                 detail_text = payload_list[3].to_string();
-
-                // let task = Task {
-                //     id: task_id.to_string(),
-                //     name: taskname.to_string(),
-                //     detail: det.to_string(),
-                //     duedate: date.to_string(),
-                //     owner: client.to_string(),
-                //     total_vote: 0,
-                //     voter_map: HashMap::<String, Option<String>>::new(),
-                // };
-
-                // tasks.insert(task.id.clone(), task);
             }
 
             else {
@@ -740,145 +751,6 @@ fn command_parser(mut stream: &std::net::TcpStream, arguments: String, locked_co
             }
             
         }
-        
-        // "TASKADD" => {
-        //     // for TASKADD <task> <client_id> <duedate>? <detail>?
-        //     // DATE - format YYYY-MM-DD
-        //     let tasks = &mut locked_container.tasks;
-
-        //     let taskname = payload_list[0]; 
-        //     let client = payload_list[1];
-
-        //     let mut task_id = nanoid!();
-        //     // let mut task_id = "idk".to_string();
-        //     // println!("{}", task_id);
-
-        //     // let task1 = Task {
-        //     //     id: "lmao".to_string(),
-        //     //     name: "lmao".to_string(),
-        //     //     detail: "lmao".to_string(),
-        //     //     duedate: "".to_string(),
-        //     //     owner: "lmao".to_string(),
-        //     //     total_vote: 0,
-        //     // };
-
-        //     // tasks.insert("idk".to_string(), task1);
-            
-        //     loop {
-        //         if !tasks.contains_key(&task_id) {
-        //             break;
-        //         }
-
-        //         task_id = nanoid!();
-        //     }
-        //     println!("{}", task_id);
-            
-        //     if payload_list.len() == 3 {
-        //         let date_detail = payload_list[2];
-
-        //         if date_detail.chars().count() == 10 {
-        //             let mut is_detail = true;
-        //             let mut count = 0;
-
-        //             for c in date_detail.chars() {
-        //                 if count == 5 || count == 8 {
-        //                     if c != '-' {
-        //                         is_detail = false;
-        //                         break; 
-        //                     }
-        //                 } else {
-        //                     if !c.is_numeric() {
-        //                         is_detail = false;
-        //                         break;
-        //                     }
-        //                 }
-
-        //                 count = count + 1;
-        //             }
-
-        //             if is_detail {
-        //                 let task = Task {
-        //                     id: task_id.to_string(),
-        //                     name: taskname.to_string(),
-        //                     detail: date_detail.to_string(),
-        //                     duedate: "".to_string(),
-        //                     owner: client.to_string(),
-        //                     total_vote: 0,
-        //                     voter_map: HashMap::<String, Option<String>>::new(),
-        //                 };
-
-        //                 tasks.insert(task.id.clone(), task);
-
-        //             } else {
-        //                 let task = Task {
-        //                     id: task_id.to_string(),
-        //                     name: taskname.to_string(),
-        //                     detail: "".to_string(),
-        //                     duedate: date_detail.to_string(),
-        //                     owner: client.to_string(),
-        //                     total_vote: 0,
-        //                     voter_map: HashMap::<String, Option<String>>::new(),
-        //                 };
-
-        //                 tasks.insert(task.id.clone(), task);
-        //             }
-
-        //         } else {
-        //             let task = Task {
-        //                 id: task_id.to_string(),
-        //                 name: taskname.to_string(),
-        //                 detail: date_detail.to_string(),
-        //                 duedate: "".to_string(),
-        //                 owner: client.to_string(),
-        //                 total_vote: 0,
-        //                 voter_map: HashMap::<String, Option<String>>::new(),
-        //             };
-
-        //             tasks.insert(task.id.clone(), task);
-        //         }
-
-
-        //     }
-
-        //     else if payload_list.len() == 4 {
-        //         let date = payload_list[2];
-        //         let det = payload_list[3];
-
-        //         let task = Task {
-        //             id: task_id.to_string(),
-        //             name: taskname.to_string(),
-        //             detail: det.to_string(),
-        //             duedate: date.to_string(),
-        //             owner: client.to_string(),
-        //             total_vote: 0,
-        //             voter_map: HashMap::<String, Option<String>>::new(),
-        //         };
-
-        //         tasks.insert(task.id.clone(), task);
-        //     }
-
-        //     else {
-        //         println!("INVALID INPUT!")
-        //     }
-        // }
-
-        // "TASKDEL" => {
-        //     let tasks = &mut locked_container.tasks;
-
-        //     if payload_list.len() == 1 {
-        //         let task_id = payload_list[0];
-
-        //         match tasks.remove(task_id) {
-        //             | Some(_) => {
-        //                 stream_handler(stream.write_all("Task deleted successfully\n".as_bytes()));
-        //             },
-        //             | None => {
-        //                 stream_handler(stream.write_all("Task does not exist\n".as_bytes()));
-        //             },
-        //         }
-        //     }
-        // }
-
 
         "LIST" => {
             let connections = &mut locked_container.connections;
@@ -975,6 +847,7 @@ fn handle_connection(mut stream: &std::net::TcpStream, maps: Arc<Mutex<MapContai
         match stream.read(&mut buffer) {
             |Ok(0) => {
                 println!("Client disconnected");
+                stream.shutdown(std::net::Shutdown::Both).expect("shutdown call failed");
                 break;
             },
             |Ok(size) => {
