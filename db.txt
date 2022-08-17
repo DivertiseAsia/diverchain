@@ -1,0 +1,2 @@
+idk4 {"id":"idk4","content":"masodsaod","vote":2,"deadline":"2/22/22 12:35","status":"AISDAS","voted":{},"creator":"me","detail":"none","comments":{}}
+idk69 {"id":"idk69","content":"masodsaod","vote":2,"deadline":"2/22/22 12:35","status":"AISDAS","voted":{},"creator":"me","detail":"none","comments":{}}

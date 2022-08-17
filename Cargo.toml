@@ -27,3 +27,5 @@ rand = "0.8.5"
 hex = "0.4.3"
 actix-cors = "0.6.1"
 stdweb = "0.4.20"
+diesel = { version = "1.4.4", features = ["postgres"] }
+dotenv = "0.15.0"

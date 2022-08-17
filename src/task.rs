@@ -2,6 +2,13 @@ use std::collections::HashMap;
 use std::net::{TcpStream};
 // use bytevec::{ByteEncodable, ByteDecodable};
 use serde::{Serialize, Deserialize};
+// use diesel::prelude::*;
+
+// #[derive(Debug, Queryable)]
+// struct Todo {
+//     id: i32,
+//     name: String,
+// }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Task {
@@ -17,6 +24,7 @@ pub struct Task {
     //Array<Json>
 }
 
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MyObj {
     pub body: String,
@@ -31,8 +39,13 @@ pub struct NewComment {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NewVote {
+    pub user_id: String
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NewValidation {
     pub user_id: String,
-    pub signature: Option<String>
+    pub signature: String
 }
 
 #[derive(Debug, Serialize, Deserialize)]

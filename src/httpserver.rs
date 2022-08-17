@@ -326,7 +326,6 @@ async fn post_add_vote(req_body: Json<NewVote>, data: web::Data<AppState>, info:
     let tasks_map = &mut maps.tasks;
 
     let user_id = &req_body.user_id;
-    let signature_string = &req_body.signature;
 
     let task_id = info.into_inner();
     let editable: Option<&mut Task> = tasks_map.get_mut(&task_id); 
@@ -339,7 +338,7 @@ async fn post_add_vote(req_body: Json<NewVote>, data: web::Data<AppState>, info:
                 HttpResponse::Ok().body("Cannot vote twice on same task")
 
             } else {
-                voters.insert(user_id.to_string(), signature_string.clone());
+                voters.insert(user_id.to_string(), None);
                 task.vote = task.vote + 1;
                 HttpResponse::Ok().body("Successfully added vote")
             }
@@ -370,6 +369,75 @@ async fn post_unvote(req_body: Json<NewVote>, data: web::Data<AppState>, info: w
                 voters.remove(&user_id.to_string());
                 task.vote = task.vote - 1;
                 HttpResponse::Ok().body("Successfully removed vote")
+            } else {
+                HttpResponse::Ok().body("User does not a vote on this task")
+            }
+        }
+
+        | None => {
+            HttpResponse::Ok().body("Failed to find task with given ID")
+        }
+    }
+}
+
+#[post("/tasks/{task_id}/validate")]
+async fn post_add_validation(req_body: Json<NewValidation>, data: web::Data<AppState>, info: web::Path<String>) -> impl Responder {
+    let map = &data.map;
+    let mut maps = (*map).lock().unwrap();
+    let tasks_map = &mut maps.tasks;
+
+    let user_id = &req_body.user_id;
+    let signature_string = &req_body.signature;
+
+    let task_id = info.into_inner();
+    let editable: Option<&mut Task> = tasks_map.get_mut(&task_id); 
+
+    match editable {
+        | Some(task) => {
+            let voters = &mut task.voted; 
+
+            if voters.contains_key(user_id) {
+                if voters.get(user_id) == None {
+                    voters.insert(user_id.to_string(), Some(signature_string.to_string()));
+                    HttpResponse::Ok().body("User successfully validated task")
+                } else {
+                    HttpResponse::Ok().body("User already validated this task")
+                }
+                    
+            } else {
+                HttpResponse::Ok().body("User has not voted on given task")
+            }
+        }
+
+        | None => {
+            HttpResponse::Ok().body("Failed to find task with given ID")
+        }
+    }
+}
+
+#[post("/tasks/{task_id}/unvalidate")]
+async fn post_remove_validation(req_body: Json<NewValidation>, data: web::Data<AppState>, info: web::Path<String>) -> impl Responder {
+    let map = &data.map;
+    let mut maps = (*map).lock().unwrap();
+    let tasks_map = &mut maps.tasks;
+
+    let user_id = &req_body.user_id;
+    let signature_string = &req_body.signature;
+
+    let task_id = info.into_inner();
+    let editable: Option<&mut Task> = tasks_map.get_mut(&task_id); 
+
+    match editable {
+        | Some(task) => {
+            let voters = &mut task.voted; 
+
+            if voters.contains_key(user_id) {
+                if voters.get(user_id) == None {
+                    HttpResponse::Ok().body("User has not validated task yet")
+                } else {
+                    voters.insert(user_id.to_string(), None);
+                    HttpResponse::Ok().body("Successfully removed validation of user")
+                }
             } else {
                 HttpResponse::Ok().body("User does not a vote on this task")
             }
@@ -413,6 +481,8 @@ async fn handle_by_actix(map: Arc<Mutex<MapContainer>>) -> std::io::Result<()> {
             .service(delete_task_comment)
             .service(post_add_vote)
             .service(post_unvote)
+            .service(post_add_validation)
+            .service(post_remove_validation)
             .route("/kill", web::get().to(kill_me))
     })
     .workers(8)

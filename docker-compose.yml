@@ -1,0 +1,21 @@
+version: "3"
+
+services:
+  web:
+    build: .
+    volumes:
+      - .:/usr/src/app
+      - cargo:/root/.cargo
+    links:
+      - db
+  db:
+    image: postgres:9.6-alpine
+    volumes:
+      - pgdata:/var/lib/postgresql/data/pgdata
+    environment:
+      POSTGRES_PASSWORD: secret123
+      PGDATA: /var/lib/postgresql/data/pgdata
+
+volumes:
+  cargo: {}
+  pgdata: {}

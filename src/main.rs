@@ -1,9 +1,10 @@
 use std::sync::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use std::env;
 use std::fs::File;
-use std::io::BufReader;
+use std::env;
+use std::io::{BufReader, BufWriter};
+use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -18,6 +19,19 @@ mod httpserver;
 mod crypto;
 use crate::task::*;
 use std::str::FromStr;
+
+// pub mod schema;
+
+// use schema::todos;
+
+// #[macro_use]
+// extern crate diesel;
+// extern crate dotenv;
+
+// use diesel::pg::PgConnection;
+// use crate::diesel::Connection;
+// use std::env;
+// use dotenv::dotenv;
 
 
 fn main() {
@@ -48,21 +62,35 @@ fn main() {
     //Scheduling repeating task
     let mapclone = maps.clone();
     let timer = timer::Timer::new();
-
     
     httpserver::start_server(maps.clone());
 
-    let _guard = timer.schedule_repeating(chrono::Duration::seconds(20), move || {
+    //read from db upon startup
+    read_tasks_from_db(maps.clone());
+
+
+    // dotenv().ok();
+    
+    // if let Ok(url) = env::var("DATABASE_URL") {
+    //     let conn = PgConnection::establish(&url)
+    //         .expect("could not connect to database");
+    // } else {
+    //     println!("No DATABASE_URL set")
+    // }
+
+    let _guard = timer.schedule_repeating(chrono::Duration::seconds(10), move || {
         let mapcloneagain = mapclone.clone();
 
         println!("Scheduling repeating task: uplink check");
 
         let uplinking = false;
         // if there exist cpnnectopn then skip
-        if (!uplinking){
+        if !uplinking {
             std::thread::spawn(move || {
                 let target_list = read_target_list_to_connect_to("config1.txt".to_string());
                 println!("Target list: {:?}", target_list);
+
+                write_tasks_to_db(&mapcloneagain);
 
                 uplink(&target_list, mapcloneagain);
             });
@@ -85,6 +113,95 @@ fn main() {
     }
 }
 
+// fn query_todos(conn: &PgConnection) {
+//     let rows = todos::table
+//         .limit(10)
+//         .load::<Todo>(conn)
+//         .expect("could not load todos");
+//     for row in rows {
+//         println!("{:?}", row);
+//     }
+// }
+
+fn write_tasks_to_db(map: &Arc<Mutex<MapContainer>>) {
+    let mut locked_container = (*map).lock().unwrap();
+    let tasks_map = &mut locked_container.tasks;
+
+    let file = File::create("db.txt");
+
+    match file {
+        | Ok(database_file) => {
+            // delete everything in file
+            database_file.set_len(0);
+
+            println!("Everything deleted");
+
+            let mut writer = BufWriter::new(database_file);
+
+            for (task_id, task_item) in tasks_map.iter() {
+                println!("{}", task_id);
+                let serialized_task = serde_json::to_string(&task_item).unwrap();
+                let write_string = task_id.to_string() + " " + &serialized_task + "\n";
+                
+                writer.write_all(write_string.as_bytes()).expect("unable to write data");
+            }
+
+            writer.flush().unwrap();
+        }   
+
+        | Err(e) => {
+            println!("{}", e);
+        }
+    }
+    
+}
+
+fn read_tasks_from_db(map: Arc<Mutex<MapContainer>>) {
+    let mut locked_container = (*map).lock().unwrap();
+    let tasks_map = &mut locked_container.tasks;
+
+    let file = File::open("db.txt");
+    
+    match file {
+        | Ok(database_file) => {
+
+            let reader = BufReader::new(database_file); 
+
+            for line in reader.lines() {
+                match line {
+                    | Ok(line) => {
+                        let split_line: Option<(&str, &str)> = line.split_once(' ');
+
+                            match split_line {
+                                | Some((str1, str2)) => {
+                                    let task: Task = serde_json::from_str(str2).unwrap();
+
+                                    tasks_map.insert(str1.to_string(), task);
+                                }
+
+                                | None => {
+                                    println!("Error in formatting of task in database")
+                                }
+                            }
+                    }
+
+                    | Err(e) => println!("{:?}", e),
+                }
+            }
+
+
+            for (key, value) in tasks_map.iter() {
+                println!("{}: {:?}", key, value);
+            }
+        }   
+
+        | Err(e) => {
+            println!("{}", e);
+        }
+    }
+    
+}
+
 fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
     // let uplinking = true;
     for server in target_list {
@@ -92,6 +209,7 @@ fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
         let mut locked_container = (*map).lock().unwrap();
         println!("MUTEX PASSED");
         let server_map = &mut locked_container.servers;
+
         // let mut server_map = HashMap::<String, std::net::TcpStream>::new();
         let mut found = false; 
         let mut server_keys: Vec<String> = Vec::new();
@@ -126,6 +244,7 @@ fn uplink(target_list: &Vec<String>, map: Arc<Mutex<MapContainer>>) {
         }
 
         println!("FOUND: {:?}", found);
+
         if !found {
             println!("not found? attempt to connect to {:?}", server);  
             let socket = SocketAddr::from_str(server).unwrap();
